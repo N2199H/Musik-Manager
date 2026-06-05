@@ -377,6 +377,131 @@
         @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
         @keyframes fadeOut { to { opacity: 0; } }
 
+        /* Settings-Modal: Icon-Button im Header */
+        .icon-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .icon-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+        .icon-btn .job-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+        .icon-btn .job-dot.hidden { display: none; }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; transform: scale(0.9); }
+            50%      { opacity: 1.0; transform: scale(1.15); }
+        }
+
+        /* Settings-Sektionen */
+        .settings-section {
+            margin-top: 18px;
+            padding: 14px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .settings-section h4 {
+            margin: 0 0 6px 0;
+            font-size: 1rem;
+            color: var(--accent-light);
+        }
+        .settings-hint {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            margin: 0 0 10px 0;
+            line-height: 1.4;
+        }
+        .settings-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .checkbox-label, .radio-label {
+            font-size: 0.88rem;
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Live-Job-Status im Modal */
+        .settings-job {
+            margin-bottom: 18px;
+            padding: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--accent);
+            border-radius: var(--radius);
+        }
+        .settings-job.hidden { display: none; }
+        .settings-job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .settings-job-name { color: var(--accent-light); }
+        .settings-job-status {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: var(--bg-dark);
+        }
+        .settings-job-status.running { color: var(--green); }
+        .settings-job-status.done    { color: var(--text-dim); }
+        .settings-job-status.failed  { color: var(--red); }
+        .settings-job-status.stopped { color: var(--text-dim); }
+        .settings-progress-track {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-dark);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 6px 0;
+        }
+        .settings-progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s ease;
+        }
+        .settings-job-message {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            min-height: 1.2em;
+        }
+        .settings-log {
+            font-family: monospace;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 8px;
+            max-height: 160px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+        .settings-log .log-empty { font-style: italic; }
+
         /* Responsive */
         @media (max-width: 768px) {
             .header { padding: 12px 16px; }
@@ -466,12 +591,16 @@
 <!-- Header -->
 <div class="header">
     <div class="header-inner">
-        <div class="logo">🎵 Musik-Manager <span>10.532 Songs</span></div>
+        <div class="logo">🎵 Musik-Manager <span id="logo-song-count">10.532 Songs</span></div>
         <div class="nav-tabs">
             <button class="nav-tab active" onclick="showTab('browse', this)">🔍 Suchen</button>
             <button class="nav-tab" onclick="showTab('playlists', this)">📋 Playlists</button>
             <button class="nav-tab" onclick="showTab('sonos', this)">🔊 Sonos</button>
         </div>
+        <button class="icon-btn" id="btn-settings" onclick="openSettings()" title="Bibliothek & Enrichment">
+            <span id="settings-icon">⚙️</span>
+            <span class="job-dot hidden" id="settings-job-dot"></span>
+        </button>
     </div>
 </div>
 
@@ -614,6 +743,68 @@
         <p style="color:var(--text-dim); margin-bottom:12px;" id="add-pl-song-name"></p>
         <div style="color:var(--text-dim);">Hinweis: Diese Funktion ist veraltet. Bitte das „+"-Symbol direkt am Suchergebnis verwenden.</div>
         <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn btn-secondary" onclick="hideModal()">Schließen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Modal (Scan + Enrichment) -->
+<div class="modal-overlay hidden" id="modal-settings">
+    <div class="modal modal-wide">
+        <h3>⚙️ Bibliothek & Enrichment</h3>
+
+        <!-- Job-Status (Live) -->
+        <div id="settings-job-panel" class="settings-job hidden">
+            <div class="settings-job-header">
+                <span class="settings-job-name" id="settings-job-name">Lade...</span>
+                <span class="settings-job-status" id="settings-job-status"></span>
+            </div>
+            <div class="settings-progress-track">
+                <div class="settings-progress-fill" id="settings-progress-fill" style="width:0%"></div>
+            </div>
+            <div class="settings-job-message" id="settings-job-message"></div>
+            <div class="settings-log" id="settings-log"></div>
+            <div class="modal-actions" style="margin-top:12px;">
+                <button class="btn btn-danger" id="settings-stop-btn" onclick="stopSettingsJob()">⏹ Stop</button>
+            </div>
+        </div>
+
+        <!-- Sektion: Bibliothek scannen -->
+        <div class="settings-section">
+            <h4>📁 Bibliothek scannen</h4>
+            <p class="settings-hint">
+                Liest ID3-Tags aller MP3/FLAC-Dateien im NAS-Mount und schreibt sie in die Datenbank.
+            </p>
+            <div class="settings-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="settings-force-rescan">
+                    Alle Songs neu einlesen (langsamer, ignoriert bereits gespeicherte)
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="startScan()" id="btn-start-scan">🔄 Jetzt scannen</button>
+            </div>
+        </div>
+
+        <!-- Sektion: MusicBrainz Enrichment -->
+        <div class="settings-section">
+            <h4>🎵 Metadaten von MusicBrainz</h4>
+            <p class="settings-hint">
+                <b>Genres</b> (1 req/Artist, ~1h bei 2000 Artists) ·
+                <b>Album + Jahr</b> (1 req/Song, ~3h bei 10k Songs) ·
+                <b>Alles</b> (Genres zuerst, dann Album+Jahr)
+            </p>
+            <div class="settings-row">
+                <label class="radio-label"><input type="radio" name="enrich-mode" value="genres"> Nur Genres</label>
+                <label class="radio-label"><input type="radio" name="enrich-mode" value="album_year"> Nur Album+Jahr</label>
+                <label class="radio-label"><input type="radio" name="enrich-mode" value="all" checked> Alles (default)</label>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="startEnrich()" id="btn-start-enrich">🎵 Jetzt anreichern</button>
+            </div>
+        </div>
+
+        <div class="modal-actions" style="margin-top:8px;">
             <button class="btn btn-secondary" onclick="hideModal()">Schließen</button>
         </div>
     </div>
@@ -1402,6 +1593,171 @@ function formatDuration(sec) {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// === Settings: Scan + Enrichment (Background-Jobs) ===
+let _settingsJobPollTimer = null;
+
+function openSettings() {
+    // Beim Öffnen: aktuellen Job-Status holen
+    document.getElementById('modal-settings').classList.remove('hidden');
+    refreshSettingsStatus();
+    ensureSettingsPolling();
+}
+
+function ensureSettingsPolling() {
+    if (_settingsJobPollTimer) return;
+    // Polling läuft, solange ein Job aktiv ist ODER das Modal offen ist
+    _settingsJobPollTimer = setInterval(async () => {
+        await refreshSettingsStatus();
+        // Beim nächsten Tick prüfen, ob wir noch pollen müssen
+        const dotVisible = !document.getElementById('settings-job-dot').classList.contains('hidden');
+        const modalOpen = !document.getElementById('modal-settings').classList.contains('hidden');
+        if (!dotVisible && !modalOpen) {
+            clearInterval(_settingsJobPollTimer);
+            _settingsJobPollTimer = null;
+        }
+    }, 2000);
+}
+
+async function refreshSettingsStatus() {
+    const modal = document.getElementById('modal-settings');
+    const modalOpen = !modal.classList.contains('hidden');
+
+    try {
+        const r = await apiGet('/api/jobs/status');
+        const job = r.current;
+        const dot = document.getElementById('settings-job-dot');
+        if (job && job.status === 'running') {
+            dot.classList.remove('hidden');
+        } else {
+            dot.classList.add('hidden');
+        }
+        // Wenn Modal zu UND kein laufender Job, können wir Polling stoppen
+        if (!modalOpen && (!job || job.status !== 'running')) {
+            if (_settingsJobPollTimer) {
+                clearInterval(_settingsJobPollTimer);
+                _settingsJobPollTimer = null;
+            }
+            return;
+        }
+        if (!modalOpen) return;
+
+        const panel = document.getElementById('settings-job-panel');
+        if (!job) {
+            panel.classList.add('hidden');
+            return;
+        }
+        panel.classList.remove('hidden');
+        document.getElementById('settings-job-name').textContent = job.name;
+        const status = document.getElementById('settings-job-status');
+        status.textContent = job.status;
+        status.className = 'settings-job-status ' + job.status;
+        const pct = job.progress_pct || 0;
+        document.getElementById('settings-progress-fill').style.width = pct + '%';
+        document.getElementById('settings-job-message').textContent =
+            `${job.current}/${job.total}  ·  ${job.message || ''}`;
+        const log = document.getElementById('settings-log');
+        if (job.log_lines && job.log_lines.length > 0) {
+            log.innerHTML = job.log_lines
+                .slice(-30)
+                .map(l => `<div>${escapeHtml(l)}</div>`)
+                .join('');
+            log.scrollTop = log.scrollHeight;
+        } else {
+            log.innerHTML = '<div class="log-empty">Noch keine Log-Zeilen…</div>';
+        }
+        // Stop-Button nur zeigen wenn running
+        document.getElementById('settings-stop-btn').style.display =
+            (job.status === 'running') ? '' : 'none';
+    } catch (e) {
+        // still ok, nur log
+        console.warn('refreshSettingsStatus:', e);
+    }
+}
+
+function escapeHtml(s) {
+    return s ? String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;') : '';
+}
+
+async function startScan() {
+    const force = document.getElementById('settings-force-rescan').checked;
+    const btn = document.getElementById('btn-start-scan');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starte...';
+    try {
+        const r = await apiPost('/api/scan/start', { force_rescan: force });
+        if (r.status === 'started') {
+            showToast(r.job.name + ' gestartet');
+            ensureSettingsPolling();  // Polling anwerfen, falls zu
+            await refreshSettingsStatus();
+        } else {
+            showToast('Unerwartete Antwort: ' + JSON.stringify(r), 'error');
+        }
+    } catch (e) {
+        if (e.message && e.message.includes('409')) {
+            showToast('Es läuft bereits ein Job', 'error');
+        } else {
+            showToast('Fehler: ' + e.message, 'error');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Jetzt scannen';
+    }
+}
+
+async function startEnrich() {
+    const modeEl = document.querySelector('input[name="enrich-mode"]:checked');
+    const mode = modeEl ? modeEl.value : 'all';
+    const btn = document.getElementById('btn-start-enrich');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starte...';
+    try {
+        const r = await apiPost('/api/enrich/start', { mode: mode });
+        if (r.status === 'started') {
+            showToast(r.job.name + ' gestartet');
+            ensureSettingsPolling();  // Polling anwerfen, falls zu
+            await refreshSettingsStatus();
+        } else {
+            showToast('Unerwartete Antwort: ' + JSON.stringify(r), 'error');
+        }
+    } catch (e) {
+        if (e.message && e.message.includes('409')) {
+            showToast('Es läuft bereits ein Job', 'error');
+        } else if (e.message && e.message.includes('400')) {
+            showToast('Ungültiger Modus: ' + mode, 'error');
+        } else {
+            showToast('Fehler: ' + e.message, 'error');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🎵 Jetzt anreichern';
+    }
+}
+
+async function stopSettingsJob() {
+    const btn = document.getElementById('settings-stop-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Stop...';
+    try {
+        await apiPost('/api/jobs/stop', null);
+        showToast('Stop angefordert');
+        await refreshSettingsStatus();
+    } catch (e) {
+        if (e.message && e.message.includes('404')) {
+            showToast('Kein laufender Job', 'error');
+        } else {
+            showToast('Fehler: ' + e.message, 'error');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⏹ Stop';
+    }
 }
 
 // === Init ===
