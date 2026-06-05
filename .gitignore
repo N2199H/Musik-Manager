@@ -60,3 +60,5 @@ sys
 *.tmp
 *.bak
 *.orig
+Textdatei.txt
+*.token
