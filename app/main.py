@@ -1022,6 +1022,32 @@ def _group_speakers(coordinator: str, members: list[str]) -> str:
         return f"Grouping-Fehler: {e}"
 
 
+def _solo_speaker(speaker: str) -> str:
+    """Löst den Speaker aus JEDER bestehenden Gruppe und macht ihn zum Solo-Coordinator.
+
+    Hintergrund: Wenn der Speaker gerade Member einer Gruppe ist, würde ein
+    play-uri auf seinen Namen trotzdem die ganze Gruppe beschallen — das ist
+    z.B. der Grund, warum 'Spiel auf Laufband' plötzlich den Balkon mit
+    beschallt, wenn Laufband+Balkon gekoppelt sind.
+
+    Wird NUR bei Einzel-Speaker-Play aufgerufen; bei Party-Modus (mehrere
+    Speaker) übernimmt _group_speakers die explizite Gruppierung.
+    """
+    import os
+    def log(msg):
+        os.write(1, (msg + "\n").encode())
+    log(f"[solo] start: {speaker}")
+    try:
+        r = _sonos_cmd(["group", "solo", "--name", speaker], timeout=10)
+        log(f"[solo] {speaker}: rc={r.returncode}, stderr={r.stderr.strip()[:100]}")
+        if r.returncode != 0:
+            return f"Solo-Trennung fehlgeschlagen für '{speaker}': {r.stderr.strip() or r.stdout.strip()}"
+        return ""
+    except Exception as e:
+        log(f"[solo] EXC: {e!r}")
+        return f"Solo-Fehler: {e}"
+
+
 @app.post("/api/sonos/play")
 def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
     """Song, Playlist oder Radio-URI auf Sonos abspielen — auf einem oder mehreren Speakern.
@@ -1043,6 +1069,16 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
             print(f"[play] GROUPING FEHLER: {grouping_err}")
         else:
             print(f"[play] grouping OK: {validated[0]} + {validated[1:]}")
+    else:
+        # Einzel-Speaker: vorher aus jeder bestehenden Gruppe lösen, damit
+        # 'Spiel auf X' wirklich nur X beschallt (nicht eine Gruppe, in der
+        # X gerade Member ist).
+        print(f"[play] calling _solo_speaker {validated[0]}", flush=True)
+        solo_err = _solo_speaker(validated[0])
+        if solo_err:
+            print(f"[play] SOLO FEHLER: {solo_err}")
+        else:
+            print(f"[play] solo OK: {validated[0]}")
     speaker = validated[0]
     result_detail = ""
 
@@ -1230,6 +1266,13 @@ def sonos_play_from_playlist(req: PlayFromPlaylistRequest, db: Session = Depends
         grouping_err = _group_speakers(validated[0], validated[1:])
         if grouping_err:
             print(f"[play-from-playlist] {grouping_err}")
+    else:
+        # Einzel-Speaker: vorher aus jeder bestehenden Gruppe lösen, damit
+        # wirklich nur dieser Speaker spielt (nicht die Gruppe, in der er
+        # gerade Member ist, z.B. Laufband+Balkon).
+        solo_err = _solo_speaker(validated[0])
+        if solo_err:
+            print(f"[play-from-playlist] {solo_err}")
     speaker = validated[0]
     speakers = _get_sonos_speakers()
     info = speakers.get(speaker, {})
