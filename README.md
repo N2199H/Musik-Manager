@@ -94,7 +94,7 @@ cp .env.example .env
 # edit .env
 ```
 
-Oder setze die Umgebungsvariablen direkt. Ohne `.env` werden die Defaults in `app/main.py` und `app/ha_config.py` verwendet.
+Oder setze die Umgebungsvariablen direkt. Ohne `.env` werden die Defaults in `app/main.py` verwendet.
 
 ### 5. Sonos-CLI installieren
 
@@ -174,8 +174,6 @@ Interaktive Doku: `http://<host>:8900/docs`
 
 | Variable | Default | Zweck |
 |---|---|---|
-| `HA_URL` | `http://homeassistant.local:8123` | HomeAssistant-URL (für Library-Playlists) |
-| `HA_TOKEN` | (leer → fallback `~/.ha_token`) | HA Long-lived access token |
 | `NAS_SMB_HOST` | `192.168.0.7` | IP/Hostname des NAS |
 | `NAS_SMB_SHARE` | `Musik` | Name des SMB-Shares |
 | `NAS_MUSIC_PATH` | `/tmp/nas-musik` | Lokaler Mount-Punkt des NAS |
@@ -187,7 +185,6 @@ Interaktive Doku: `http://<host>:8900/docs`
 app/
 ├── main.py              # FastAPI-App + alle Endpoints (~1800 Zeilen)
 ├── database.py          # SQLAlchemy-Model (Song, Playlist, PlaylistTrack)
-├── ha_config.py         # HomeAssistant-Config (URL, Token, Speaker-Mapping)
 ├── jobs.py              # Background-Job-Manager (ThreadPool + Progress)
 ├── scanner/             # NAS-Scanner
 │   ├── nas.py           # ID3-Extract, DB-Schema, run_scan()

@@ -780,74 +780,6 @@ def _enqueue_cifs(speaker_ip, file_uri, title=""):
     return True
 
 
-def _ha_sonos_play_media(speaker, media_content_id, media_content_type="music",
-                          shuffle=None, volume=None):
-    """Spiele Content auf einem Sonos-Speaker via HomeAssistant.
-
-    Warum: HA's Sonos-Integration spricht UPnP richtig für S://-Library-URIs
-    und Queue-Operationen. Direkter `sonos play-uri` schlägt bei S:// mit
-    UPnP 714 fehl, und x-file-cifs-URIs können nicht in der Queue navigiert
-    werden (UPnP 711 bei next/seek).
-
-    Liefert die HA-Response (parsed JSON). Bei Fehlern wird RuntimeError geworfen.
-    """
-    import requests as _requests
-    from .ha_config import HA_URL, HA_TOKEN, SPEAKER_TO_ENTITY
-
-    if not HA_TOKEN:
-        raise RuntimeError("HA_TOKEN nicht konfiguriert (siehe app/ha_config.py)")
-
-    entity_id = SPEAKER_TO_ENTITY.get(speaker)
-    if not entity_id:
-        raise RuntimeError(f"Unbekannter Speaker: {speaker}")
-
-    payload = {
-        "entity_id": entity_id,
-        "media_content_type": media_content_type,
-        "media_content_id": media_content_id,
-    }
-    r = _requests.post(
-        f"{HA_URL}/api/services/media_player/play_media",
-        headers={
-            "Authorization": f"Bearer {HA_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=15,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"HA play_media HTTP {r.status_code}: {r.text[:200]}")
-
-    # Optional: Shuffle + Volume nach dem Play
-    if shuffle is not None:
-        _requests.post(
-            f"{HA_URL}/api/services/media_player/shuffle_set",
-            headers={"Authorization": f"Bearer {HA_TOKEN}",
-                     "Content-Type": "application/json"},
-            json={"entity_id": entity_id, "shuffle": shuffle},
-            timeout=10,
-        )
-    if volume is not None:
-        # HA erwartet 0.0-1.0
-        _requests.post(
-            f"{HA_URL}/api/services/media_player/volume_set",
-            headers={"Authorization": f"Bearer {HA_TOKEN}",
-                     "Content-Type": "application/json"},
-            json={"entity_id": entity_id, "volume_level": max(0, min(1, volume / 100))},
-            timeout=10,
-        )
-    # Erst nach volume_set abspielen (falls pausiert durch Library-Init)
-    _requests.post(
-        f"{HA_URL}/api/services/media_player/media_play",
-        headers={"Authorization": f"Bearer {HA_TOKEN}",
-                 "Content-Type": "application/json"},
-        json={"entity_id": entity_id},
-        timeout=10,
-    )
-    return {"entity_id": entity_id, "media_content_id": media_content_id,
-            "media_content_type": media_content_type}
-
-
 def _playlist_library_uri(m3u_filepath):
     """Konvertiere lokalen M3U-Pfad in Sonos-Library-URI (S://server/share/file.m3u).
 
@@ -1131,7 +1063,10 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
         speakers = _get_sonos_speakers()
         speaker_ip = speakers.get(speaker, {}).get("ip")
         if speaker_ip:
-            try:
+            # SoCo-Pfad mit EINMAL-Retry: Wenn der erste Versuch scheitert
+            # (z.B. Queue kaputt, Speaker reagiert kurz nicht), nochmal mit
+            # clear_queue() davor. Erst wenn der Retry auch scheitert → 500.
+            def _soco_play_attempt():
                 import soco
                 from soco.data_structures import DidlMusicTrack, DidlResource
                 from urllib.parse import quote
@@ -1155,9 +1090,24 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
                 for song in songs[1:]:
                     item, _ = _build_item(song)
                     device.add_to_queue(item)
-                # Shuffle setzen
-                device.shuffle = bool(cmd.shuffle)
+                if cmd.shuffle:
+                    device.shuffle = True
+                else:
+                    device.shuffle = False
+                return device
 
+            soco_err = None
+            device = None
+            for attempt in (1, 2):
+                try:
+                    device = _soco_play_attempt()
+                    soco_err = None
+                    break
+                except Exception as e:
+                    soco_err = e
+                    print(f"[play] SoCo attempt {attempt} failed: {e!r}")
+
+            if device is not None:
                 _sonos_playing[speaker] = {
                     "playlist_name": cmd.playlist_name,
                     "song_id": songs[0].id,
@@ -1169,31 +1119,9 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
                     "detail": f"Playlist '{cmd.playlist_name}' ({len(songs)} Songs, SoCo)",
                     "method": "soco-http",
                 }
-            except Exception as e:
-                # SoCo fehlgeschlagen → Fallback unten
-                result_detail = f"SoCo-Pfad fehlgeschlagen ({e}), Fallback aktiv"
-
-        # Fallback: HA + Library-URI (funktioniert nur, wenn HA nicht gerade 500 wirft)
-        if pl.m3u_filepath:
-            library_uri = _playlist_library_uri(pl.m3u_filepath)
-            try:
-                _ha_sonos_play_media(
-                    speaker, library_uri,
-                    media_content_type="playlist",
-                    shuffle=cmd.shuffle,
-                    volume=cmd.volume,
-                )
-                result_detail = f"Playlist '{cmd.playlist_name}' (Library: {pl.m3u_filepath})"
-                _sonos_playing[speaker] = {
-                    "playlist_name": cmd.playlist_name or None,
-                    "song_id": None,
-                    "started_at": datetime.now().isoformat(),
-                }
-                return {"status": "playing", "speaker": speaker, "detail": result_detail,
-                        "method": "ha-library"}
-            except Exception as e:
-                result_detail = f"Library-Pfad fehlgeschlagen ({e})"
-                raise HTTPException(status_code=500, detail=result_detail)
+            result_detail = f"SoCo-Pfad fehlgeschlagen nach 2 Versuchen: {soco_err}"
+        else:
+            result_detail = f"Speaker-IP für '{speaker}' nicht gefunden"
 
         raise HTTPException(status_code=500, detail=result_detail)
 
