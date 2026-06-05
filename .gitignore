@@ -1,0 +1,62 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === Virtual Environment ===
+venv/
+.venv/
+env/
+
+# === Database (lokale Daten — nicht im Repo) ===
+*.db
+*.sqlite
+*.sqlite3
+data/
+musik.db
+
+# === NAS-Mount (lokal gemounted) ===
+/tmp/nas-musik/
+/mnt/nas/
+/mnt/musik/
+
+# === Credentials & Secrets ===
+.env
+.env.local
+*.token
+*credentials*
+secrets.yaml
+
+# === Logs ===
+*.log
+*.log.*
+logs/
+
+# === One-Shot-Outputs (war/enrich/scan-reports) ===
+enrich_log.txt
+scan_report.txt
+
+# === Build / Dist ===
+build/
+dist/
+*.spec
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# === Sonstiges ===
+sys
+.trash/
+*.tmp
+*.bak
+*.orig

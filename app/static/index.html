@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 Musik-Manager</title>
+    <style>
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-hover: #1a1a2e;
+            --accent: #6c5ce7;
+            --accent-light: #a29bfe;
+            --accent-glow: rgba(108, 92, 231, 0.3);
+            --green: #00b894;
+            --orange: #fdcb6e;
+            --red: #e17055;
+            --blue: #0984e3;
+            --text: #e8e8f0;
+            --text-dim: #7f7fa0;
+            --border: #2a2a3e;
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+        .header-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent-light);
+            white-space: nowrap;
+        }
+        .logo span { color: var(--text-dim); font-weight: 400; font-size: 0.85rem; margin-left: 8px; }
+
+        /* Nav Tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-dark);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .nav-tab {
+            padding: 8px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            transition: all 0.2s;
+            border: none;
+            background: none;
+        }
+        .nav-tab:hover { color: var(--text); background: var(--bg-hover); }
+        .nav-tab.active { background: var(--accent); color: #fff; }
+
+        /* Main Content */
+        .main { max-width: 1400px; margin: 0 auto; padding: 20px 24px 100px; }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            text-align: center;
+        }
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--accent-light); }
+        .stat-label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+        /* Search & Filter Bar */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text);
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-input::placeholder { color: var(--text-dim); }
+
+        select, .filter-select {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text);
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+        }
+        select:focus { border-color: var(--accent); }
+        option { background: var(--bg-card); color: var(--text); }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-light); }
+        .btn-secondary { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); }
+        .btn-danger { background: var(--red); color: #fff; }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+        .btn-icon { padding: 8px; font-size: 1rem; }
+
+        /* Song Table */
+        .song-grid {
+            display: grid;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .song-header {
+            display: grid;
+            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 60px;
+            gap: 8px;
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        .song-row {
+            display: grid;
+            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 60px;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+        .song-row:hover { background: var(--bg-hover); }
+        .song-row.playing { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+        .song-num { color: var(--text-dim); font-size: 0.8rem; }
+        .song-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .song-artist { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .song-album { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .song-genre { color: var(--accent-light); font-size: 0.8rem; }
+        .song-year { color: var(--text-dim); font-size: 0.85rem; }
+        .song-actions { display: flex; gap: 4px; }
+        .play-btn {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s;
+        }
+        .play-btn:hover { transform: scale(1.15); background: var(--accent-light); }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+            padding-bottom: 20px;
+        }
+        .page-info { color: var(--text-dim); font-size: 0.85rem; }
+
+        /* Playlist Panel */
+        .playlist-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .playlist-header {
+            margin-bottom: 16px;
+        }
+        .playlist-header h2 { font-size: 1.2rem; }
+        .pl-name-text:hover { text-decoration: underline dotted; }
+        .pl-toggle-icon:hover { background: var(--bg-hover); }
+        .playlist-tracks { display: flex; flex-direction: column; gap: 4px; }
+        .playlist-track {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: background 0.15s;
+        }
+        .playlist-track:hover { background: var(--bg-hover); }
+        .playlist-track-num { color: var(--text-dim); width: 24px; text-align: right; font-size: 0.85rem; }
+        .playlist-track-reorder { display: flex; flex-direction: column; gap: 2px; }
+        .btn-reorder {
+            background: transparent;
+            border: 1px solid var(--border, #444);
+            color: var(--text-dim);
+            width: 22px; height: 18px;
+            font-size: 0.75rem; line-height: 1;
+            padding: 0; margin: 0;
+            border-radius: 4px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .btn-reorder:hover:not(:disabled) {
+            background: var(--bg-hover);
+            color: var(--text);
+            border-color: var(--accent, #6c8);
+        }
+        .btn-reorder:disabled { opacity: 0.25; cursor: not-allowed; }
+        .playlist-track-info { flex: 1; }
+        .playlist-track-title { font-weight: 500; }
+        .playlist-track-artist { color: var(--text-dim); font-size: 0.85rem; }
+        .playlist-track-duration { color: var(--text-dim); font-size: 0.85rem; }
+
+        /* Sonos Controls */
+        .sonos-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .speaker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .speaker-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .speaker-card:hover { border-color: var(--accent); }
+        .speaker-card.active { border-color: var(--green); box-shadow: 0 0 12px rgba(0, 184, 148, 0.2); }
+        .speaker-icon { font-size: 2rem; margin-bottom: 6px; }
+        .speaker-name { font-weight: 600; font-size: 0.9rem; }
+        .speaker-status { font-size: 0.8rem; color: var(--text-dim); margin-top: 4px; }
+        .volume-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            justify-content: center;
+        }
+        .volume-slider {
+            width: 80%;
+            accent-color: var(--accent);
+        }
+        .volume-val { font-size: 0.8rem; color: var(--text-dim); min-width: 24px; }
+        .speaker-actions { display: flex; gap: 4px; justify-content: center; margin-top: 6px; }
+        .speaker-actions .btn-sm { padding: 2px 8px; font-size: 0.85rem; }
+
+        /* Genre Tags */
+        .genre-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .genre-tag {
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: var(--text-dim);
+        }
+        .genre-tag:hover, .genre-tag.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal h3 { margin-bottom: 16px; }
+        .modal-input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-dark);
+            color: var(--text);
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+        }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--green);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            z-index: 2000;
+            animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+        }
+        .toast.error { background: var(--red); }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
+        @keyframes fadeOut { to { opacity: 0; } }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header { padding: 12px 16px; }
+            .main { padding: 12px 16px 80px; }
+            .song-header, .song-row {
+                grid-template-columns: 30px 1fr 0.7fr 60px;
+            }
+            .song-album, .song-genre, .song-year { display: none; }
+            .stats-bar { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        /* Now Playing Bar */
+        .now-playing {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+            border-top: 1px solid var(--border);
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 100;
+            min-height: 60px;
+        }
+        .np-info { flex: 1; }
+        .np-title { font-weight: 600; font-size: 0.95rem; }
+        .np-artist { color: var(--text-dim); font-size: 0.85rem; }
+        .np-controls { display: flex; gap: 8px; align-items: center; }
+        .np-volume { display: flex; align-items: center; gap: 6px; }
+        .np-speaker { font-size: 0.85rem; color: var(--accent-light); }
+        .np-duration { font-size: 0.8rem; color: var(--text-dim); min-width: 90px; text-align: right; }
+        .np-playlist { font-size: 0.8rem; color: var(--accent); }
+
+        /* Add to Playlist dropdown */
+        .add-to-pl {
+            position: relative;
+            display: inline-block;
+        }
+        .add-to-pl-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-width: 200px;
+            z-index: 50;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .add-to-pl-menu.show { display: block; }
+        .add-to-pl-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.15s;
+        }
+        .add-to-pl-item:hover { background: var(--bg-hover); }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px; height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hidden { display: none !important; }
+
+        /* Section title */
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <div class="header-inner">
+        <div class="logo">🎵 Musik-Manager <span>10.532 Songs</span></div>
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('browse', this)">🔍 Suchen</button>
+            <button class="nav-tab" onclick="showTab('playlists', this)">📋 Playlists</button>
+            <button class="nav-tab" onclick="showTab('sonos', this)">🔊 Sonos</button>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+
+    <!-- Stats -->
+    <div class="stats-bar" id="stats-bar"></div>
+
+    <!-- Tab: Browse -->
+    <div id="tab-browse">
+        <!-- Genre Quick-Filter -->
+        <div class="genre-tags" id="genre-tags"></div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <input type="text" class="search-input" id="search-input" placeholder="🎤 Suche Künstler, Titel, Album..." oninput="debounceSearch()">
+            <select id="filter-genre" onchange="loadSongs()">
+                <option value="">Alle Genres</option>
+            </select>
+            <select id="filter-sort" onchange="loadSongs()">
+                <option value="artist">Künstler A-Z</option>
+                <option value="title">Titel A-Z</option>
+                <option value="year">Neueste zuerst</option>
+                <option value="random">Zufall 🔀</option>
+            </select>
+            <select id="filter-year" onchange="loadSongs()">
+                <option value="">Alle Jahre</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadSongs()">🔍 Suchen</button>
+            <button class="btn btn-secondary" onclick="createPlaylistFromFilter()">💾 Als Playlist</button>
+        </div>
+
+        <!-- Song List -->
+        <div class="song-header">
+            <div>#</div>
+            <div>Titel</div>
+            <div>Künstler</div>
+            <div>Album</div>
+            <div>Genre</div>
+            <div>Jahr</div>
+            <div></div>
+        </div>
+        <div class="song-grid" id="song-list"></div>
+
+        <!-- Pagination -->
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- Tab: Playlists -->
+    <div id="tab-playlists" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2 class="section-title">📋 Playlists</h2>
+            <button class="btn btn-primary" onclick="showCreatePlaylistModal()">+ Neue Playlist</button>
+            <button class="btn btn-secondary" onclick="importM3U()" id="btn-import-m3u" style="margin-left:8px;">📥 M3U importieren</button>
+        </div>
+        <div id="playlist-list"></div>
+    </div>
+
+    <!-- Tab: Sonos -->
+    <div id="tab-sonos" class="hidden">
+        <h2 class="section-title">🔊 Sonos-Lautsprecher</h2>
+        <div class="sonos-panel">
+            <div class="speaker-grid" id="speaker-grid"></div>
+            <div style="margin-top:20px;">
+                <h3 style="margin-bottom:10px; font-size:1rem;">📻 Radio spielen</h3>
+                <div class="filter-bar">
+                    <select id="radio-station">
+                        <option value="x-rincon-mp3radio://http://radiostreaming.ert.gr/ert-proto">🇬🇷 ERT Proto (Griechisch)</option>
+                        <option value="x-rincon-mp3radio://http://streaming.radio.co/s5c56bb507/listen">🎷 Smooth Motion FM (Soul/Funk)</option>
+                        <option value="x-rincon-mp3radio://http://stream.srg-ssr.ch/m/rsc_de/mp3_128">🇨🇭 Swiss Classic</option>
+                        <option value="x-rincon-mp3radio://http://streams.kexp.org/kexp128.mp3">🎸 KEXP (Indie)</option>
+                    </select>
+                    <select id="radio-speaker">
+                    </select>
+                    <button class="btn btn-primary" onclick="playRadio()">▶ Radio starten</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Now Playing Bar (hidden initially) -->
+<div class="now-playing hidden" id="now-playing">
+    <div class="np-info">
+        <div class="np-title" id="np-title">—</div>
+        <div class="np-artist" id="np-artist">—</div>
+        <div class="np-playlist" id="np-playlist"></div>
+    </div>
+    <div class="np-speaker" id="np-speaker"></div>
+    <div class="np-duration" id="np-duration"></div>
+    <div class="np-controls">
+        <button class="btn btn-sm btn-secondary" id="np-pause-btn" onclick="sonosPause()">⏸ Pause</button>
+        <button class="btn btn-sm btn-secondary" onclick="sonosStop()">⏹ Stop</button>
+    </div>
+</div>
+
+<!-- Play on Speaker Modal -->
+<div class="modal-overlay hidden" id="modal-pick-speaker">
+    <div class="modal">
+        <h3>🔊 Auf welchem Lautsprecher?</h3>
+        <p style="color:var(--text-dim); margin-bottom:12px;" id="pick-song-name"></p>
+        <div id="pick-speaker-list" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;"></div>
+        <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:12px;" id="pick-speaker-hint">Mehrere auswählen für Party-Modus (synchron).</p>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="hideModal()">Abbrechen</button>
+            <button class="btn btn-primary" id="btn-confirm-play">▶ Abspielen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Playlist Modal -->
+<div class="modal-overlay hidden" id="modal-create-pl">
+    <div class="modal">
+        <h3>🎵 Neue Playlist erstellen</h3>
+        <input type="text" class="modal-input" id="new-pl-name" placeholder="Playlist-Name...">
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="hideModal()">Abbrechen</button>
+            <button class="btn btn-primary" onclick="doCreatePlaylist()">Erstellen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Playlist Modal -->
+<div class="modal-overlay hidden" id="modal-edit-pl">
+    <div class="modal">
+        <h3>✏️ Playlist umbenennen</h3>
+        <input type="text" class="modal-input" id="edit-pl-name" placeholder="Neuer Name...">
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="hideModal()">Abbrechen</button>
+            <button class="btn btn-primary" onclick="doRenamePlaylist()">Speichern</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add to Playlist Modal -->
+<div class="modal-overlay hidden" id="modal-add-pl">
+    <div class="modal">
+        <h3>📋 Hinzufügen</h3>
+        <p style="color:var(--text-dim); margin-bottom:12px;" id="add-pl-song-name"></p>
+        <div style="color:var(--text-dim);">Hinweis: Diese Funktion ist veraltet. Bitte das „+"-Symbol direkt am Suchergebnis verwenden.</div>
+        <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn btn-secondary" onclick="hideModal()">Schließen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let currentTab = 'browse';
+let addPlaylistSongId = null;
+
+// === API Calls ===
+async function apiGet(path) {
+    const r = await fetch(API + path);
+    if (!r.ok) throw new Error(`API Error: ${r.status}`);
+    return r.json();
+}
+
+async function apiPost(path, body) {
+    const r = await fetch(API + path, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body ? JSON.stringify(body) : undefined
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Fehler'); }
+    return r.json();
+}
+
+async function apiPatch(path, body) {
+    const r = await fetch(API + path, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: body ? JSON.stringify(body) : undefined
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Fehler'); }
+    return r.json();
+}
+
+async function apiDelete(path) {
+    const r = await fetch(API + path, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Fehler beim Löschen');
+    return r.json();
+}
+
+// === Toast ===
+function toast(msg, isError = false) {
+    const el = document.createElement('div');
+    el.className = 'toast' + (isError ? ' error' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+// === Tabs ===
+function showTab(tab, btn) {
+    currentTab = tab;
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.getElementById('tab-browse').classList.toggle('hidden', tab !== 'browse');
+    document.getElementById('tab-playlists').classList.toggle('hidden', tab !== 'playlists');
+    document.getElementById('tab-sonos').classList.toggle('hidden', tab !== 'sonos');
+    if (tab === 'playlists') loadPlaylists();
+    if (tab === 'sonos') loadSpeakers();
+}
+
+// === Stats ===
+async function loadStats() {
+    const stats = await apiGet('/api/stats');
+    document.getElementById('stats-bar').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${stats.total_songs.toLocaleString('de')}</div><div class="stat-label">Songs</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.with_artist.toLocaleString('de')}</div><div class="stat-label">mit Künstler</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.with_genre.toLocaleString('de')}</div><div class="stat-label">mit Genre</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.with_album.toLocaleString('de')}</div><div class="stat-label">mit Album</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.with_year.toLocaleString('de')}</div><div class="stat-label">mit Jahr</div></div>
+    `;
+    // Genre tags (top 15)
+    const top = stats.genres.slice(0, 15);
+    document.getElementById('genre-tags').innerHTML = top.map(g =>
+        `<span class="genre-tag" onclick="filterGenre('${g.genre.replace(/'/g, "\\'")}')">${g.genre} (${g.count})</span>`
+    ).join('');
+    // Genre dropdown
+    const sel = document.getElementById('filter-genre');
+    sel.innerHTML = '<option value="">Alle Genres</option>' +
+        stats.genres.map(g => `<option value="${g.genre}">${g.genre} (${g.count})</option>`).join('');
+    // Year dropdown
+    const ysel = document.getElementById('filter-year');
+    ysel.innerHTML = '<option value="">Alle Jahre</option>' +
+        stats.years.map(y => `<option value="${y.year}">${y.year} (${y.count})</option>`).join('');
+}
+
+function filterGenre(genre) {
+    document.getElementById('filter-genre').value = genre;
+    document.querySelectorAll('.genre-tag').forEach(t => t.classList.toggle('active', t.textContent.startsWith(genre)));
+    loadSongs();
+}
+
+// === Songs ===
+let searchTimer = null;
+function debounceSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { currentPage = 0; loadSongs(); }, 300);
+}
+
+async function loadSongs() {
+    const q = document.getElementById('search-input').value;
+    const genre = document.getElementById('filter-genre').value;
+    const sort = document.getElementById('filter-sort').value;
+    const year = document.getElementById('filter-year').value;
+
+    let url = `/api/songs?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}&sort=${sort}`;
+    if (q) url += `&q=${encodeURIComponent(q)}`;
+    if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+    if (year) url += `&year=${encodeURIComponent(year)}`;
+
+    const songs = await apiGet(url);
+    renderSongs(songs);
+
+    // Update result count (approximate)
+    const totalShown = songs.length;
+    document.querySelector('.logo span').textContent = totalShown === PAGE_SIZE
+        ? `${PAGE_SIZE}+ Songs` : `${totalShown} Songs`;
+}
+
+function renderSongs(songs) {
+    const el = document.getElementById('song-list');
+    if (songs.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;">Keine Songs gefunden</div>';
+        return;
+    }
+    el.innerHTML = songs.map((s, i) => `
+        <div class="song-row" data-id="${s.id}">
+            <div class="song-num">${currentPage * PAGE_SIZE + i + 1}</div>
+            <div class="song-title" title="${esc(s.title)}">${esc(s.title)}</div>
+            <div class="song-artist">${esc(s.artist)}</div>
+            <div class="song-album">${esc(s.album)}</div>
+            <div class="song-genre">${esc(s.genre)}</div>
+            <div class="song-year">${s.year || ''}</div>
+            <div class="song-actions">
+                <button class="play-btn" onclick="playSong(${s.id})" title="Auf Sonos spielen">▶</button>
+                <button class="play-btn" onclick="addToCurrentPlayingPlaylist(${s.id})" title="Zur aktuell laufenden Playlist" style="background:var(--bg-hover);font-size:0.7rem;">+</button>
+            </div>
+        </div>
+    `).join('');
+
+    // Pagination
+    const pg = document.getElementById('pagination');
+    if (songs.length === PAGE_SIZE) {
+        pg.innerHTML = `
+            ${currentPage > 0 ? `<button class="btn btn-sm btn-secondary" onclick="prevPage()">← Zurück</button>` : ''}
+            <span class="page-info">Seite ${currentPage + 1}</span>
+            <button class="btn btn-sm btn-secondary" onclick="nextPage()">Weiter →</button>
+        `;
+    } else if (currentPage > 0) {
+        pg.innerHTML = `
+            <button class="btn btn-sm btn-secondary" onclick="prevPage()">← Zurück</button>
+            <span class="page-info">Seite ${currentPage + 1}</span>
+        `;
+    } else {
+        pg.innerHTML = '';
+    }
+}
+
+function nextPage() { currentPage++; loadSongs(); }
+function prevPage() { if (currentPage > 0) { currentPage--; loadSongs(); } }
+
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+
+// === Play Song on Sonos ===
+let _pendingPlaySongId = null;
+let _pendingPlayFromPlaylist = null;  // {name, song_id}
+
+async function _showSpeakerPicker(subtitle) {
+    document.getElementById('pick-song-name').textContent = subtitle;
+
+    // Modal SOFORT zeigen, Speaker async nachladen — vorher waren es 7-15s
+    const list = document.getElementById('pick-speaker-list');
+    list.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-dim); padding:12px;">⏳ Speaker werden geladen…</div>';
+    document.getElementById('modal-pick-speaker').classList.remove('hidden');
+
+    let speakers;
+    try {
+        speakers = await apiGet('/api/sonos/speakers');
+    } catch (e) {
+        toast('Speaker nicht gefunden: ' + e.message, true);
+        hideModal();
+        return null;
+    }
+
+    if (!speakers || speakers.length === 0) {
+        list.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text-dim);">Keine Speaker gefunden</div>';
+        return [];
+    }
+
+    return speakers;
+}
+
+function _renderSpeakerList(speakers, onclickName) {
+    // speakers werden zu Checkboxes; User wählt einen oder mehrere aus
+    const list = document.getElementById('pick-speaker-list');
+    list.innerHTML = speakers.map(s => `
+        <label class="speaker-pick-item" style="display:flex; align-items:center; gap:8px; padding:10px 8px; cursor:pointer; border:1px solid var(--border, #444); border-radius:6px;">
+            <input type="checkbox" class="speaker-pick-cb" value="${esc(s.name)}" data-volume="${s.volume ?? 0}">
+            <span style="flex:1;">🔊 ${esc(s.name)}</span>
+            ${s.volume !== null ? `<span style="font-size:0.75rem;color:var(--text-dim);">${s.volume}%</span>` : ''}
+        </label>
+    `).join('');
+}
+
+function _wireConfirmButton(handler) {
+    // Klick auf "▶ Abspielen" sammelt ausgewählte Speaker und ruft handler auf
+    const btn = document.getElementById('btn-confirm-play');
+    const newBtn = btn.cloneNode(true);  // alte Listener wegwerfen
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', () => {
+        const selected = Array.from(document.querySelectorAll('.speaker-pick-cb:checked'))
+            .map(cb => cb.value);
+        if (selected.length === 0) {
+            toast('Bitte mindestens einen Lautsprecher auswählen', true);
+            return;
+        }
+        handler(selected);
+    });
+}
+
+async function playSong(id) {
+    // Speaker-Picker zeigen statt direkt abzuspielen
+    _pendingPlaySongId = id;
+    const song = await apiGet(`/api/songs/${id}`);
+    const speakers = await _showSpeakerPicker(`${song.artist} – ${song.title}`);
+    if (!speakers) return;
+    _renderSpeakerList(speakers);
+    _wireConfirmButton(_doPlaySong);
+}
+
+async function _doPlaySong(selectedSpeakers) {
+    hideModal();
+    const id = _pendingPlaySongId;
+    if (!id) return;
+    _pendingPlaySongId = null;
+    try {
+        const song = await apiGet(`/api/songs/${id}`);
+        await apiPost('/api/sonos/play', { speakers: selectedSpeakers, song_id: id, shuffle: false });
+        document.getElementById('np-title').textContent = song.title;
+        document.getElementById('np-artist').textContent = song.artist;
+        const _npSpk1 = document.getElementById('np-speaker');
+        _npSpk1.textContent = `🔊 ${selectedSpeakers.join(' + ')}`;
+        _npSpk1.dataset.speaker = selectedSpeakers[0];
+        document.getElementById('now-playing').classList.remove('hidden');
+        toast(`▶ ${song.artist} – ${song.title} → ${selectedSpeakers.join(' + ')}`);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function playFromPlaylist(playlistName, songId, songTitle, songArtist) {
+    // Speaker-Picker zeigen
+    _pendingPlayFromPlaylist = { name: playlistName, song_id: songId };
+    const speakers = await _showSpeakerPicker(
+        `Playlist "${playlistName}" ab "${songArtist} – ${songTitle}"`
+    );
+    if (!speakers) return;
+    _renderSpeakerList(speakers);
+    _wireConfirmButton(_doPlayFromPlaylist);
+}
+
+async function _doPlayFromPlaylist(selectedSpeakers) {
+    hideModal();
+    const pending = _pendingPlayFromPlaylist;
+    if (!pending) return;
+    _pendingPlayFromPlaylist = null;
+    try {
+        const r = await apiPost('/api/sonos/play-from-playlist', {
+            speakers: selectedSpeakers,
+            playlist_name: pending.name,
+            start_at_song_id: pending.song_id,
+            shuffle: false,
+        });
+        const spk = document.getElementById('np-speaker');
+        spk.textContent = `🔊 ${selectedSpeakers.join(' + ')}`;
+        spk.dataset.speaker = selectedSpeakers[0];
+        document.getElementById('np-title').textContent = pending.name;
+        document.getElementById('np-artist').textContent = 'Playlist wird geladen...';
+        document.getElementById('np-playlist').textContent = `📋 ${pending.name}`;
+        document.getElementById('now-playing').classList.remove('hidden');
+        toast(`▶ ${pending.name} → ${selectedSpeakers.join(' + ')}`);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function sonosPause() {
+    // Gleiche Speaker-Erkennung wie sonosStop(): Argument (Sonos-Tab), np-speaker.dataset.speaker,
+    // np-speaker.textContent, radio-speaker.value, sonst Küche.
+    let speaker = arguments[0];
+    if (!speaker) {
+        const npEl = document.getElementById('np-speaker');
+        speaker = npEl?.dataset?.speaker
+            || (npEl?.textContent || '').replace(/^🔊\s*/, '').trim()
+            || document.getElementById('radio-speaker')?.value
+            || 'Küche';
+    }
+    if (!speaker || speaker === 'undefined') speaker = 'Küche';
+    try {
+        const r = await apiPost('/api/sonos/pause', { speaker });
+        // Backend hat getoggelt → Button-Text synchron zum neuen State
+        _updatePauseButton(r.state);
+        const verb = r.status === 'resumed' ? 'fortgesetzt' : 'pausiert';
+        toast(r.state === 'PLAYING' ? `▶ ${speaker} ${verb}` : `⏸ ${speaker} ${verb}`);
+    } catch (e) { toast(e.message, true); }
+}
+
+function _updatePauseButton(state) {
+    // state: 'PLAYING' → ⏸ Pause (klick pausiert)
+    // state: 'PAUSED_PLAYBACK' / 'STOPPED' / '' / 'TRANSITIONING' → ▶ Weiter (klick resumet)
+    const btn = document.getElementById('np-pause-btn');
+    if (!btn) return;
+    if (state === 'PLAYING') {
+        btn.textContent = '⏸ Pause';
+    } else {
+        btn.textContent = '▶ Weiter';
+    }
+}
+
+async function sonosStop() {
+    // Speaker bestimmen: Argument (Sonos-Tab), np-speaker.dataset.speaker (Now-Playing-Bar),
+    // np-speaker.textContent (Fallback: "🔊 Laufband" → "Laufband"),
+    // radio-speaker.value, sonst Küche.
+    let speaker = arguments[0];
+    if (!speaker) {
+        const npEl = document.getElementById('np-speaker');
+        speaker = npEl?.dataset?.speaker
+            || (npEl?.textContent || '').replace(/^🔊\s*/, '').trim()
+            || document.getElementById('radio-speaker')?.value
+            || 'Küche';
+    }
+    if (!speaker || speaker === 'undefined') speaker = 'Küche';
+    try {
+        await apiPost('/api/sonos/stop', { speaker });
+        toast(`⏹ ${speaker} gestoppt`);
+        // Now-Playing-Bar leeren + Sonos-Tab neu laden (falls vorhanden)
+        updateNowPlayingBar([]);
+        setTimeout(() => {
+            if (typeof loadSpeakers === 'function') loadSpeakers();
+        }, 500);
+    } catch (e) { toast(e.message, true); }
+}
+
+// === Now-Playing Polling ===
+let _npPollTimer = null;
+
+function startNowPlayingPoll() {
+    if (_npPollTimer) return;  // schon aktiv
+    _npPollTimer = setInterval(pollNowPlaying, 5000);
+    pollNowPlaying();  // sofort einmal
+}
+
+function stopNowPlayingPoll() {
+    if (_npPollTimer) {
+        clearInterval(_npPollTimer);
+        _npPollTimer = null;
+    }
+}
+
+async function pollNowPlaying() {
+    try {
+        const data = await apiGet('/api/sonos/now-playing');
+        updateNowPlayingBar(data);
+        // Pause-Button-Text mit dem echten State synchronisieren
+        // (PLAYING → ⏸ Pause, PAUSED → ▶ Weiter). Polling liefert jetzt auch
+        // pausierte Speaker, sodass die Bar bei Pause sichtbar bleibt.
+        if (data && data.length > 0 && data[0].state) {
+            _updatePauseButton(data[0].state);
+        }
+    } catch (e) { /* stillschweigend */ }
+}
+
+function updateNowPlayingBar(playing) {
+    const bar = document.getElementById('now-playing');
+    if (!playing || playing.length === 0) {
+        bar.classList.add('hidden');
+        return;
+    }
+    // Zeige den ersten spielenden Speaker
+    const info = playing[0];
+    bar.classList.remove('hidden');
+
+    // Song-Infos: aus DB (besser) oder aus Sonos-Titel (Fallback)
+    if (info.song) {
+        document.getElementById('np-title').textContent = info.song.title;
+        document.getElementById('np-artist').textContent = info.song.artist + (info.song.album ? ` — ${info.song.album}` : '');
+    } else {
+        // Fallback: Sonos-Titel (Dateiname)
+        const raw = info.title || '—';
+        // Versuche "Artist - Title.mp3" zu splitten
+        const clean = raw.replace(/\.mp3$/, '');
+        const dashIdx = clean.indexOf(' - ');
+        if (dashIdx > 0) {
+            document.getElementById('np-title').textContent = clean.substring(dashIdx + 3);
+            document.getElementById('np-artist').textContent = clean.substring(0, dashIdx);
+        } else {
+            document.getElementById('np-title').textContent = clean;
+            document.getElementById('np-artist').textContent = '';
+        }
+    }
+
+    // Playlist-Name
+    const plEl = document.getElementById('np-playlist');
+    plEl.textContent = info.playlist_name ? `📋 ${info.playlist_name}` : '';
+
+    // Speaker
+    const spkEl = document.getElementById('np-speaker');
+    spkEl.textContent = `🔊 ${info.speaker}`;
+    spkEl.dataset.speaker = info.speaker;
+
+    // Dauer / Position
+    const durEl = document.getElementById('np-duration');
+    if (info.rel_time && info.track_duration) {
+        durEl.textContent = `${info.rel_time} / ${info.track_duration}`;
+    } else if (info.track_duration) {
+        durEl.textContent = info.track_duration;
+    } else {
+        durEl.textContent = '';
+    }
+
+    // Mehrere Speaker? Dann ersten nehmen, aber Hinweis
+    if (playing.length > 1) {
+        const names = playing.map(p => p.speaker).join(', ');
+        spkEl.textContent = `🔊 ${names}`;
+    }
+}
+
+// Beim Laden starten
+document.addEventListener('DOMContentLoaded', () => {
+    startNowPlayingPoll();
+});
+
+// === Playlists ===
+async function loadPlaylists() {
+    const playlists = await apiGet('/api/playlists');
+    const el = document.getElementById('playlist-list');
+    if (playlists.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;">Noch keine Playlists. Erstelle eine!</div>';
+        return;
+    }
+    el.innerHTML = playlists.map(pl => `
+        <div class="playlist-panel" id="pl-${pl.id}">
+            <div class="playlist-header" style="cursor:pointer; user-select:none;">
+                <span class="pl-toggle-icon" id="pl-icon-${pl.id}" onclick="event.stopPropagation(); togglePlaylist(${pl.id})" style="display:inline-block; width:1.5em; cursor:pointer; color:var(--text-dim); font-size:1.1em; padding:2px 6px; border-radius:4px;" title="Auf-/Zuklappen">▸</span>
+                <h2 style="display:inline; cursor:pointer;" onclick="togglePlaylist(${pl.id})" ondblclick="event.stopPropagation(); showRenamePlaylistModal(${pl.id}, '${esc(pl.name)}')">
+                    <span class="pl-name-text" id="pl-name-${pl.id}">${esc(pl.name)}</span>
+                    <span style="color:var(--text-dim);font-weight:400;font-size:0.85rem;">(${pl.track_count} Songs)</span>
+                    ${pl.m3u_filepath ? ' <span style="color:var(--accent);font-size:0.75rem;" title="M3U-Datei auf der NAS verknüpft">🔗 NAS</span>' : ''}
+                </h2>
+                <div style="display:flex;gap:6px; float:right;" onclick="event.stopPropagation();">
+                    <button class="btn btn-sm btn-primary" onclick="playPlaylist('${esc(pl.name)}', false)" title="In Reihenfolge abspielen">▶</button>
+                    <button class="btn btn-sm btn-primary" onclick="playPlaylist('${esc(pl.name)}', true)" title="Zufällige Reihenfolge">🔀</button>
+                    <button class="btn btn-sm btn-danger" onclick="deletePlaylist(${pl.id}, ${pl.m3u_filepath ? 'true' : 'false'})">🗑</button>
+                </div>
+                <div style="clear:both;"></div>
+            </div>
+            <div class="playlist-tracks" id="pl-tracks-${pl.id}" style="display:none;">
+                <div style="color:var(--text-dim);padding:8px 0;">Klicke auf den Playlist-Namen, um die Songs zu sehen.</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Track which playlists are open + whether tracks have been loaded
+const _openPlaylists = new Set();
+const _loadedPlaylists = new Set();
+
+function togglePlaylist(id) {
+    const tracksEl = document.getElementById(`pl-tracks-${id}`);
+    const iconEl = document.getElementById(`pl-icon-${id}`);
+    const panelEl = document.getElementById(`pl-${id}`);
+    const isOpen = _openPlaylists.has(id);
+    if (isOpen) {
+        // Einklappen
+        tracksEl.style.display = 'none';
+        if (iconEl) iconEl.textContent = '▸';
+        _openPlaylists.delete(id);
+    } else {
+        // Aufklappen
+        tracksEl.style.display = '';
+        if (iconEl) iconEl.textContent = '▾';
+        _openPlaylists.add(id);
+        // Tracks immer neu laden — falls die API vorher einen Fehler hatte oder
+        // sich der Inhalt geändert hat (Track hinzugefügt, Reihenfolge, etc.)
+        loadPlaylistTracks(id);
+        // Scroll zum Playlist-Header, damit die Tracks sichtbar werden
+        // (insbesondere auf kleinen Bildschirmen, wenn die Liste lang ist
+        // und sonst unter dem Viewport landen würde).
+        // requestAnimationFrame: erst nach dem Render scrollen.
+        requestAnimationFrame(() => {
+            if (panelEl) {
+                panelEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    }
+}
+
+async function loadPlaylistTracks(id) {
+    const el = document.getElementById(`pl-tracks-${id}`);
+    if (!el) return;
+    // Loading-Indikator anzeigen, damit der User weiß, dass was passiert
+    el.innerHTML = '<div style="color:var(--text-dim);padding:8px 0;">⏳ Lade Songs…</div>';
+    try {
+        const data = await apiGet(`/api/playlists/${id}`);
+        const hasM3u = !!data.m3u_filepath;
+        if (!data.tracks || data.tracks.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-dim)">Leer – füge Songs über die Suche hinzu.</div>';
+            return;
+        }
+        const total = data.tracks.length;
+        el.innerHTML = data.tracks.map((t, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === total - 1;
+            return `
+            <div class="playlist-track" data-song-id="${t.id}">
+                <div class="playlist-track-num">${t.position}.</div>
+                <div class="playlist-track-reorder">
+                    <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'up')"
+                        ${isFirst ? 'disabled title="Bereits oben"' : 'title="Nach oben"'}
+                        aria-label="Nach oben">↑</button>
+                    <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'down')"
+                        ${isLast ? 'disabled title="Bereits unten"' : 'title="Nach unten"'}
+                        aria-label="Nach unten">↓</button>
+                </div>
+                <div class="playlist-track-info">
+                    <div class="playlist-track-title">${esc(t.title)}</div>
+                    <div class="playlist-track-artist">${esc(t.artist)} ${t.genre ? '· ' + esc(t.genre) : ''}</div>
+                </div>
+                <div class="playlist-track-duration">${t.duration_sec ? formatDuration(t.duration_sec) : ''}</div>
+                <button class="btn btn-sm btn-secondary" onclick="playFromPlaylist('${esc(data.name)}', ${t.id}, '${esc(t.title)}', '${esc(t.artist)}')" title="Playlist ab diesem Lied abspielen">▶</button>
+                <button class="btn btn-sm btn-danger" onclick="removeTrack(${id}, ${t.id}, ${hasM3u})">✕</button>
+            </div>
+        `;}).join('');
+    } catch (e) {
+        console.error('loadPlaylistTracks failed', e);
+        el.innerHTML = `<div style="color:var(--danger,#e55);padding:8px 0;">⚠️ Fehler beim Laden: ${esc(e.message || String(e))}</div>`;
+    }
+}
+
+async function reorderTrack(playlistId, songId, direction) {
+    // Optimistic: Liste neu laden, damit Reihenfolge + disabled-States konsistent sind
+    // (Klick auf ↑/↓ ist eindeutig genug, kein Confirm nötig)
+    try {
+        const result = await apiPost(`/api/playlists/${playlistId}/tracks/reorder`, { song_id: songId, direction });
+        if (result.moved) {
+            // Erfolgs-Toast nur anzeigen wenn M3U da war (sonst Spam)
+            if (result.m3u_synced) {
+                toast(`↕️ Verschoben (M3U aktualisiert)`);
+            }
+        } else {
+            toast('Bereits am Rand');
+        }
+        loadPlaylistTracks(playlistId);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function removeTrack(plId, songId, hasM3u) {
+    const msg = hasM3u
+        ? 'Track aus der Playlist entfernen?\n\nDie verknüpfte M3U-Datei auf der NAS wird ebenfalls aktualisiert.'
+        : 'Track aus der Playlist entfernen?';
+    if (!confirm(msg)) return;
+    try {
+        const result = await apiDelete(`/api/playlists/${plId}/tracks/${songId}?sync_m3u=true`);
+        toast(result.m3u_synced ? 'Track entfernt (M3U aktualisiert)' : 'Track entfernt');
+        loadPlaylistTracks(plId);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function deletePlaylist(id, hasM3u) {
+    let deleteM3u = false;
+    if (hasM3u) {
+        const answer = confirm(
+            'Playlist löschen?\n\n' +
+            'Diese Playlist ist mit einer M3U-Datei auf der NAS verknüpft.\n\n' +
+            'OK = Nur aus der Datenbank löschen (M3U bleibt auf der NAS)\n' +
+            'Abbrechen = Abbrechen\n\n' +
+            'Für "Auch M3U auf der NAS löschen" bitte Shift+OK drücken.'
+        );
+        if (!answer) return;
+        // Shift-Taste gedrückt = auch M3U löschen
+        deleteM3u = event ? event.shiftKey : false;
+    } else {
+        if (!confirm('Playlist wirklich löschen?')) return;
+    }
+    try {
+        const url = `/api/playlists/${id}?delete_m3u=${deleteM3u}`;
+        const result = await apiDelete(url);
+        if (result.m3u_deleted) {
+            toast('Playlist und M3U-Datei auf der NAS gelöscht');
+        } else if (result.m3u_note) {
+            toast('Playlist gelöscht — M3U-Datei auf der NAS bleibt erhalten');
+        } else {
+            toast('Playlist gelöscht');
+        }
+        loadPlaylists();
+    } catch (e) { toast(e.message, true); }
+}
+
+let _pendingPlaylistName = null;
+let _pendingPlaylistShuffle = false;
+
+async function playPlaylist(name, shuffle) {
+    _pendingPlaylistName = name;
+    _pendingPlaylistShuffle = !!shuffle;
+    const subtitle = shuffle ? `🔀 Zufall: ${name}` : `▶ Reihenfolge: ${name}`;
+    const speakers = await _showSpeakerPicker(subtitle);
+    if (!speakers) return;
+    _renderSpeakerList(speakers);
+    _wireConfirmButton(_doPlayPlaylist);
+}
+
+async function _doPlayPlaylist(selectedSpeakers) {
+    hideModal();
+    const name = _pendingPlaylistName;
+    const shuffle = _pendingPlaylistShuffle;
+    if (!name) return;
+    _pendingPlaylistName = null;
+    _pendingPlaylistShuffle = false;
+    try {
+        const result = await apiPost('/api/sonos/play', { speakers: selectedSpeakers, playlist_name: name, shuffle });
+        // Now-Playing-Bar sofort aktualisieren
+        document.getElementById('np-title').textContent = name;
+        document.getElementById('np-artist').textContent = shuffle ? '🔀 Zufällige Reihenfolge' : 'Playlist wird geladen...';
+        document.getElementById('np-playlist').textContent = `📋 ${name}${shuffle ? ' (🔀)' : ''}`;
+        const spk = document.getElementById('np-speaker');
+        spk.textContent = `🔊 ${selectedSpeakers.join(' + ')}`;
+        spk.dataset.speaker = selectedSpeakers[0];
+        document.getElementById('np-duration').textContent = '';
+        document.getElementById('now-playing').classList.remove('hidden');
+        const verb = shuffle ? '🔀 Zufall' : '▶';
+        toast(`${verb} ${name} auf ${selectedSpeakers.join(' + ')}`);
+    } catch (e) { toast(e.message, true); }
+}
+
+// === Create Playlist ===
+async function importM3U() {
+    const btn = document.getElementById('btn-import-m3u');
+    btn.disabled = true;
+    btn.textContent = '⏳ Importiere...';
+    try {
+        const result = await apiGet('/api/import/m3u');
+        const total = result.imported ? result.imported.length : 0;
+        const tracks = result.imported ? result.imported.reduce((s, p) => s + p.tracks, 0) : 0;
+        toast(`📥 ${total} Playlists importiert (${tracks} Songs zugeordnet)`);
+        loadPlaylists();
+    } catch (e) {
+        toast('Import fehlgeschlagen: ' + e.message, true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📥 M3U importieren';
+    }
+}
+
+function showCreatePlaylistModal() {
+    document.getElementById('modal-create-pl').classList.remove('hidden');
+    document.getElementById('new-pl-name').focus();
+}
+function hideModal() {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
+}
+
+async function doCreatePlaylist() {
+    const name = document.getElementById('new-pl-name').value.trim();
+    if (!name) return;
+    try {
+        await apiPost('/api/playlists', { name });
+        toast(`📋 Playlist "${name}" erstellt`);
+        hideModal();
+        loadPlaylists();
+    } catch (e) { toast(e.message, true); }
+}
+
+let _renamePlaylistId = null;
+
+function showRenamePlaylistModal(playlistId, currentName) {
+    _renamePlaylistId = playlistId;
+    const input = document.getElementById('edit-pl-name');
+    input.value = currentName;
+    document.getElementById('modal-edit-pl').classList.remove('hidden');
+    // Enter = speichern, Escape = abbrechen
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); doRenamePlaylist(); }
+        if (e.key === 'Escape') { e.preventDefault(); hideModal(); }
+    };
+    // Cursor ans Ende, alles markiert zum Tippen
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+async function doRenamePlaylist() {
+    const newName = document.getElementById('edit-pl-name').value.trim();
+    if (!newName || _renamePlaylistId === null) return;
+    try {
+        await apiPatch(`/api/playlists/${_renamePlaylistId}`, { name: newName });
+        toast(`✏️ Umbenannt zu "${newName}"`);
+        hideModal();
+        _renamePlaylistId = null;
+        loadPlaylists();
+    } catch (e) { toast(e.message, true); }
+}
+
+// === Add Song to Current Playing Playlist ===
+async function addToCurrentPlayingPlaylist(songId) {
+    try {
+        const r = await apiPost('/api/playlists/current/track', { song_id: songId });
+        const m3uInfo = r.m3u_synced ? ' ✓ M3U aktualisiert' : '';
+        toast(`✓ Zu "${r.playlist_name}" hinzugefügt (${r.speaker})${m3uInfo}`);
+    } catch (e) {
+        toast(e.message, true);
+    }
+}
+
+// === Create Playlist from Filter ===
+async function createPlaylistFromFilter() {
+    const q = document.getElementById('search-input').value;
+    const genre = document.getElementById('filter-genre').value;
+    const year = document.getElementById('filter-year').value;
+    const name = prompt('Playlist-Name:', `${genre || 'Suche'} Mix`);
+    if (!name) return;
+
+    let url = `/api/playlists/create-from-filter?name=${encodeURIComponent(name)}`;
+    if (q) url += `&q=${encodeURIComponent(q)}`;
+    if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+    if (year) url += `&year=${encodeURIComponent(year)}`;
+
+    try {
+        const result = await apiPost(url);
+        toast(`📋 "${name}" erstellt mit ${result.track_count} Songs`);
+    } catch (e) { toast(e.message, true); }
+}
+
+// === Sonos Speakers ===
+async function loadSpeakers() {
+    try {
+        const speakers = await apiGet('/api/sonos/speakers');
+        const grid = document.getElementById('speaker-grid');
+        grid.innerHTML = speakers.map(s => `
+            <div class="speaker-card" id="speaker-${s.name}">
+                <div class="speaker-icon">🔊</div>
+                <div class="speaker-name">${s.name}</div>
+                <div class="speaker-status" id="speaker-status-${s.name}">${s.status || 'Bereit'}</div>
+                <div class="volume-row">
+                    <button class="btn btn-sm btn-secondary" onclick="setVolume('${s.name}', 0)">🔇</button>
+                    <input type="range" class="volume-slider" min="0" max="100" value="${s.volume ?? 13}"
+                        onchange="setVolume('${s.name}', this.value)" id="vol-${s.name}">
+                    <span class="volume-val" id="vol-val-${s.name}">${s.volume ?? 13}</span>
+                </div>
+                <div class="speaker-actions">
+                    <button class="btn btn-sm" onclick="sonosPause('${s.name}')">⏸</button>
+                    <button class="btn btn-sm" onclick="sonosStop('${s.name}')">⏹</button>
+                </div>
+            </div>
+        `).join('');
+
+        // Speaker Dropdown für Radio + Now Playing
+        const sel = document.getElementById('radio-speaker');
+        if (sel) sel.innerHTML = speakers.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    } catch (e) { toast('Speaker laden fehlgeschlagen: ' + e.message, true); }
+}
+
+async function setVolume(speaker, vol) {
+    try {
+        await apiPost(`/api/sonos/volume?speaker=${encodeURIComponent(speaker)}&volume=${vol}`, null);
+        document.getElementById(`vol-val-${speaker}`).textContent = vol;
+        toast(`🔊 ${speaker}: ${vol}%`);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function playRadio() {
+    const uri = document.getElementById('radio-station').value;
+    const speaker = document.getElementById('radio-speaker').value;
+    try {
+        await apiPost('/api/sonos/play', { speaker, uri, shuffle: false });
+        toast(`📻 Radio auf ${speaker}`);
+        document.getElementById('np-title').textContent = '📻 Radio';
+        document.getElementById('np-artist').textContent = document.getElementById('radio-station').selectedOptions[0].textContent;
+        const _npSpk3 = document.getElementById('np-speaker');
+        _npSpk3.textContent = `🔊 ${speaker}`;
+        _npSpk3.dataset.speaker = speaker;
+        document.getElementById('now-playing').classList.remove('hidden');
+    } catch (e) { toast(e.message, true); }
+}
+
+// === Utility ===
+function formatDuration(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// === Init ===
+loadStats();
+loadSongs();
+</script>
+</body>
+</html>
