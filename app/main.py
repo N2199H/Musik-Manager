@@ -1546,6 +1546,43 @@ def sonos_now_playing_active():
     }
 
 
+@app.get("/api/sonos/queue-info")
+def sonos_queue_info(speaker: str):
+    """Queue-Länge live von Sonos holen — unabhängig vom Backend-Cache.
+
+    Wird vom Queue-Hint in der Now-Playing-Bar genutzt, weil der
+    _sonos_playing-Cache manchmal leer ist, obwohl grad ein Song spielt
+    (z.B. direkt nach Next, oder wenn die Now-Playing-Bar den Speaker
+    kennt, der Cache aber noch nicht aktualisiert wurde).
+
+    Liefert {speaker, queue_remaining, total, current_track}.
+    queue_remaining = Anzahl der noch kommenden Songs (ohne aktuellen).
+    """
+    sp = _get_speaker_name(speaker)
+    queue_remaining = 0
+    total = 0
+    current_track = 0
+    try:
+        speakers = _get_sonos_speakers()
+        spk_info = speakers.get(sp, {})
+        ip = spk_info.get("ip")
+        if ip:
+            import soco
+            device = soco.SoCo(ip)
+            total = device.queue_size
+            current_track = device.get_current_track_info().get("playlist_position") or 0
+            if total and current_track:
+                queue_remaining = max(0, int(total) - int(current_track))
+    except Exception:
+        pass
+    return {
+        "speaker": sp,
+        "queue_remaining": queue_remaining,
+        "total": total,
+        "current_track": current_track,
+    }
+
+
 def _local_ip() -> str:
     """Eigene LAN-IP herausfinden (für HTTP-URLs an Sonos)."""
     import socket
@@ -1649,6 +1686,24 @@ def sonos_stop(cmd: SonosCommand):
     # Playing-Info aufräumen
     _sonos_playing.pop(speaker, None)
     return {"status": "stopped", "speaker": speaker}
+
+
+@app.post("/api/sonos/next")
+def sonos_next(cmd: SonosCommand):
+    """Zum nächsten Track in der Queue springen.
+
+    Nutzt `sonos next` CLI (UPnP-AVTransport.Next). Funktioniert nur, wenn
+    eine Queue mit >=2 Einträgen existiert (Playlist/Radio/Manuelle Queue).
+    Bei Radio-Streams oder leerer Queue ist der Aufruf ein No-Op — wir
+    returnen trotzdem success, damit das UI nicht meckert.
+    """
+    speaker = _get_speaker_name(cmd.speaker)
+    r = _sonos_cmd(["next", "--name", speaker])
+    if r.returncode != 0:
+        # Kein Fehler werfen — der User hat wahrscheinlich auf "Next" gedrückt
+        # obwohl keine Queue da ist. Stilles Toast im Frontend.
+        return {"status": "no_queue", "speaker": speaker}
+    return {"status": "skipped", "speaker": speaker}
 
 
 # === Seek (zu einer bestimmten Position im Track springen) ===
@@ -1774,6 +1829,21 @@ def sonos_now_playing(db: Session = Depends(get_db)):
                 from urllib.parse import unquote as _unquote
                 local_path = NAS_MUSIC_PATH + _unquote(rel_path)
                 song = db.query(Song).filter(Song.filepath == local_path).first()
+            # Fallback 3: HTTP-URL mit Filename am Ende → in DB nach filename suchen
+            # (Sonos strippt manchmal ?sid= aus der URI; mit Filename-Match treffen
+            # wir den Song auch dann, wenn er gerade aktiv spielt)
+            if song is None and uri and uri.startswith("http"):
+                from urllib.parse import unquote as _unquote2
+                fname = _unquote2(uri.rsplit("/", 1)[-1].split("?")[0])
+                if fname:
+                    # Exakter Match auf filename zuerst
+                    song = db.query(Song).filter(Song.filename == fname).first()
+                    if song is None:
+                        # Substring-Match: manchmal hat die Sonos-URI Pfad-Präfixe
+                        # wie "/sylvia/..." die in DB nicht stehen. Suche nach Dateinamen-Ende.
+                        song = db.query(Song).filter(
+                            Song.filename == fname.rsplit("/", 1)[-1]
+                        ).first()
             if song is not None:
                 # NUL-Bytes defensiv rauswerfen (UI kann sie nicht anzeigen)
                 def _clean_db(s, fallback=""):
