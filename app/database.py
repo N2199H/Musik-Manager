@@ -1,6 +1,6 @@
 """Datenbank-Modell und Verbindung für den Musik-Manager"""
 
-from sqlalchemy import create_engine, Column, Integer, Float, Text, String, Index, event
+from sqlalchemy import create_engine, Column, Integer, Float, Text, String, Index, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from pathlib import Path
 
@@ -38,6 +38,7 @@ class Song(Base):
     lastfm_tags = Column(Text)
     analyzed_at = Column(Text)
     created_at = Column(Text)
+    score = Column(Float, default=50.0, nullable=False)  # Ranking-Score, EWMA-geglättet
 
     def to_dict(self):
         return {
@@ -57,6 +58,7 @@ class Song(Base):
             "mood": self.mood or "",
             "tags": self.tags or "",
             "filepath": self.filepath,
+            "score": self.score if self.score is not None else 50.0,
         }
 
 
@@ -103,6 +105,12 @@ def init_db():
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE playlists ADD COLUMN m3u_filepath TEXT"))
+            conn.commit()
+        except Exception:
+            pass  # Spalte existiert bereits
+        # Migration: score-Spalte in songs (Ranking)
+        try:
+            conn.execute(text("ALTER TABLE songs ADD COLUMN score REAL DEFAULT 50.0 NOT NULL"))
             conn.commit()
         except Exception:
             pass  # Spalte existiert bereits
