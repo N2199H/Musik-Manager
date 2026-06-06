@@ -166,7 +166,7 @@
         }
         .song-header {
             display: grid;
-            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 60px;
+            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 90px 60px;
             gap: 8px;
             padding: 8px 12px;
             font-size: 0.75rem;
@@ -175,9 +175,22 @@
             letter-spacing: 0.5px;
             border-bottom: 1px solid var(--border);
         }
+        .song-h-cell { user-select: none; }
+        .song-h-cell.sortable {
+            cursor: pointer;
+            transition: color 0.15s;
+        }
+        .song-h-cell.sortable:hover { color: var(--text); }
+        .song-h-cell.sortable.active { color: var(--accent); }
+        .song-h-cell .sort-indicator {
+            display: inline-block;
+            margin-left: 3px;
+            font-size: 0.7rem;
+            opacity: 0.7;
+        }
         .song-row {
             display: grid;
-            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 60px;
+            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 90px 60px;
             gap: 8px;
             padding: 10px 12px;
             border-radius: 8px;
@@ -194,6 +207,10 @@
         .song-album { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .song-genre { color: var(--accent-light); font-size: 0.8rem; }
         .song-year { color: var(--text-dim); font-size: 0.85rem; }
+        .song-score { display: flex; align-items: center; gap: 6px; }
+        .song-score-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+        .song-score-bar-fill { height: 100%; transition: width 0.3s ease; }
+        .song-score-value { font-size: 0.8rem; font-weight: 600; min-width: 22px; text-align: right; }
         .song-actions { display: flex; gap: 4px; }
         .play-btn {
             width: 32px; height: 32px;
@@ -507,9 +524,10 @@
             .header { padding: 12px 16px; }
             .main { padding: 12px 16px 80px; }
             .song-header, .song-row {
-                grid-template-columns: 30px 1fr 0.7fr 60px;
+                grid-template-columns: 30px 1fr 70px 60px;
             }
             .song-album, .song-genre, .song-year { display: none; }
+            .song-score-value { min-width: 18px; font-size: 0.7rem; }
             .stats-bar { grid-template-columns: repeat(3, 1fr); }
         }
 
@@ -535,7 +553,97 @@
         .np-volume { display: flex; align-items: center; gap: 6px; }
         .np-speaker { font-size: 0.85rem; color: var(--accent-light); }
         .np-duration { font-size: 0.8rem; color: var(--text-dim); min-width: 90px; text-align: right; }
+
+        /* Mobile: Now-Playing-Bar in zwei Zeilen stapeln, damit alle Controls
+           sichtbar bleiben. Row 1: Song-Info + Speaker. Row 2: Seek-Bar + Buttons. */
+        @media (max-width: 768px) {
+            .now-playing {
+                flex-wrap: wrap;
+                padding: 8px 12px;
+                gap: 8px;
+            }
+            .np-info { flex: 1 1 60%; min-width: 0; }
+            .np-speaker { flex: 1 1 35%; text-align: right; font-size: 0.8rem; }
+            .np-seek { order: 5; flex: 1 1 100%; }
+            .np-controls { order: 6; flex: 1 1 100%; justify-content: space-between; }
+            .np-controls button { padding: 8px 12px; font-size: 1rem; }
+        }
+        .np-seek {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 240px;
+            flex: 0 0 auto;
+        }
+        .np-seek-time {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+            min-width: 38px;
+            text-align: center;
+        }
+        .np-seek-bar {
+            position: relative;
+            flex: 1;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            cursor: pointer;
+            min-width: 120px;
+        }
+        .np-seek-bar:hover { height: 8px; transition: height 0.1s; }
+        .np-seek-fill {
+            position: absolute;
+            top: 0; left: 0;
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.25s linear;
+            pointer-events: none;
+        }
+        .np-seek-thumb {
+            position: absolute;
+            top: 50%;
+            left: 0%;
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            transition: opacity 0.15s;
+            pointer-events: none;
+        }
+        .np-seek-bar:hover .np-seek-thumb,
+        .np-seek-bar.dragging .np-seek-thumb { opacity: 1; }
         .np-playlist { font-size: 0.8rem; color: var(--accent); }
+        .np-score {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+            font-size: 0.75rem;
+        }
+        .np-score-label { color: var(--text-dim); }
+        .np-score-value { font-weight: 600; min-width: 22px; text-align: right; }
+        .np-score-bar {
+            width: 80px;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .np-score-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 50%;
+            transition: width 0.4s ease, background 0.4s ease;
+        }
+        .btn-like { background: rgba(46, 204, 113, 0.2); border-color: #2ecc71; }
+        .btn-like:hover { background: rgba(46, 204, 113, 0.4); }
+        .btn-dislike { background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; }
+        .btn-dislike:hover { background: rgba(231, 76, 60, 0.4); }
 
         /* Add to Playlist dropdown */
         .add-to-pl {
@@ -576,6 +684,20 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .hidden { display: none !important; }
+
+        /* Mobile-Tap-Optimization: Buttons reagieren ohne 300ms-Delay.
+           Außerdem: Buttons haben mindestens 44x44 px Hit-Area (Apple HIG),
+           damit sie auf dem Handy nicht "verloren" wirken. */
+        button, .btn, .nav-tab, .play-btn {
+            touch-action: manipulation;
+            min-height: 36px;
+        }
+        @media (max-width: 768px) {
+            button, .btn, .nav-tab, .play-btn {
+                min-height: 44px;
+                padding: 12px 16px;
+            }
+        }
 
         /* Section title */
         .section-title {
@@ -621,10 +743,11 @@
             <select id="filter-genre" onchange="loadSongs()">
                 <option value="">Alle Genres</option>
             </select>
-            <select id="filter-sort" onchange="loadSongs()">
+            <select id="filter-sort" onchange="onDropdownSortChange()">
                 <option value="artist">Künstler A-Z</option>
                 <option value="title">Titel A-Z</option>
                 <option value="year">Neueste zuerst</option>
+                <option value="score">⭐ Bester Score zuerst</option>
                 <option value="random">Zufall 🔀</option>
             </select>
             <select id="filter-year" onchange="loadSongs()">
@@ -635,14 +758,15 @@
         </div>
 
         <!-- Song List -->
-        <div class="song-header">
-            <div>#</div>
-            <div>Titel</div>
-            <div>Künstler</div>
-            <div>Album</div>
-            <div>Genre</div>
-            <div>Jahr</div>
-            <div></div>
+        <div class="song-header" id="song-header">
+            <div class="song-h-cell sortable" data-sort-key="id">#</div>
+            <div class="song-h-cell sortable" data-sort-key="title">Titel</div>
+            <div class="song-h-cell sortable" data-sort-key="artist">Künstler</div>
+            <div class="song-h-cell sortable" data-sort-key="album">Album</div>
+            <div class="song-h-cell sortable" data-sort-key="genre">Genre</div>
+            <div class="song-h-cell sortable" data-sort-key="year">Jahr</div>
+            <div class="song-h-cell sortable" data-sort-key="score">Score</div>
+            <div class="song-h-cell"></div>
         </div>
         <div class="song-grid" id="song-list"></div>
 
@@ -689,12 +813,27 @@
         <div class="np-title" id="np-title">—</div>
         <div class="np-artist" id="np-artist">—</div>
         <div class="np-playlist" id="np-playlist"></div>
+        <div class="np-score hidden" id="np-score" title="Ranking-Score (höher = besser)">
+            <span class="np-score-label">Score:</span>
+            <span class="np-score-value" id="np-score-value">50</span>
+            <div class="np-score-bar"><div class="np-score-bar-fill" id="np-score-bar-fill"></div></div>
+        </div>
     </div>
     <div class="np-speaker" id="np-speaker"></div>
-    <div class="np-duration" id="np-duration"></div>
+    <div class="np-seek">
+        <span class="np-seek-time" id="np-seek-time">0:00</span>
+        <div class="np-seek-bar" id="np-seek-bar">
+            <div class="np-seek-fill" id="np-seek-fill"></div>
+            <div class="np-seek-thumb" id="np-seek-thumb"></div>
+        </div>
+        <span class="np-seek-time" id="np-seek-duration">0:00</span>
+    </div>
     <div class="np-controls">
         <button class="btn btn-sm btn-secondary" id="np-pause-btn" onclick="sonosPause()">⏸ Pause</button>
         <button class="btn btn-sm btn-secondary" onclick="sonosStop()">⏹ Stop</button>
+        <button class="btn btn-sm btn-like" id="np-like-btn" onclick="sendPlayEvent('like')" title="Like (stark positiv)">👍</button>
+        <button class="btn btn-sm btn-dislike" id="np-dislike-btn" onclick="sendPlayEvent('dislike')" title="Dislike (stark negativ)">👎</button>
+        <span class="np-queue-hint hidden" id="np-queue-hint" style="font-size:0.8rem; color:var(--accent-light); padding:0 6px;"></span>
     </div>
 </div>
 
@@ -830,8 +969,15 @@ async function apiPost(path, body) {
         headers: {'Content-Type': 'application/json'},
         body: body ? JSON.stringify(body) : undefined
     });
-    if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Fehler'); }
-    return r.json();
+    // Robuster als r.json() direkt: bei HTML-Error-Body (z.B. FastAPI 500)
+    // knallt JSON.parse mit "Unexpected token". text() + parse() fängt das ab.
+    const text = await r.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch {
+        throw new Error(`HTTP ${r.status}: ${text.substring(0, 100) || 'kein Body'}`);
+    }
+    if (!r.ok) throw new Error(parsed.detail || 'Fehler');
+    return parsed;
 }
 
 async function apiPatch(path, body) {
@@ -909,24 +1055,173 @@ function debounceSearch() {
     searchTimer = setTimeout(() => { currentPage = 0; loadSongs(); }, 300);
 }
 
+// Enter-Taste im Suchfeld löst sofortige Suche aus (statt 300ms zu warten).
+// Praktisch auf Mobile, wo Tipper keine Tab-Wechsel machen wollen.
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('search-input');
+    if (input) {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(searchTimer);
+                currentPage = 0;
+                loadSongs();
+                input.blur();  // Keyboard auf Mobile schließen
+            }
+        });
+    }
+});
+
+// === Klickbare Sortier-Header ===
+// Dreiklang: 1. Klick = asc, 2. Klick = desc, 3. Klick = unsortiert (id_asc = DB-Reihenfolge)
+// Klick auf andere Spalte beginnt bei asc.
+// Das Dropdown wird synchron gehalten (es zeigt die "Lesart" — asc/desc geht aber nur via Klick).
+let _currentSort = '';  // z.B. "title_asc", "year_desc", "" (unsortiert/id_asc)
+
+function onHeaderSortClick(key) {
+    // Sonderfall: "id" bedeutet "unsortiert" — also dritter Klick
+    if (key === 'id') {
+        _currentSort = 'id_asc';
+    } else {
+        // Aktueller State: "<key>_asc" → asc → desc → unsortiert → asc
+        if (_currentSort === `${key}_asc`) {
+            _currentSort = `${key}_desc`;
+        } else if (_currentSort === `${key}_desc`) {
+            _currentSort = 'id_asc';  // zurück zu unsortiert
+        } else {
+            _currentSort = `${key}_asc`;  // anderer key, oder noch nichts
+        }
+    }
+    _updateHeaderIndicators();
+    _syncSortDropdown();
+    currentPage = 0;
+    loadSongs();
+}
+
+function _updateHeaderIndicators() {
+    document.querySelectorAll('.song-h-cell.sortable').forEach(cell => {
+        const key = cell.dataset.sortKey;
+        // Bestehenden Indikator entfernen
+        const old = cell.querySelector('.sort-indicator');
+        if (old) old.remove();
+        // Active-Klasse setzen
+        cell.classList.remove('active');
+        // Aktiven Zustand prüfen
+        if (_currentSort === `${key}_asc` || _currentSort === `${key}_desc`) {
+            cell.classList.add('active');
+            const arrow = _currentSort === `${key}_asc` ? '▲' : '▼';
+            const span = document.createElement('span');
+            span.className = 'sort-indicator';
+            span.textContent = arrow;
+            cell.appendChild(span);
+        } else if (key === 'id' && _currentSort === 'id_asc') {
+            // "id" als Default/unsortiert markieren wir NICHT mit active — sonst
+            // wäre der "normale" Zustand immer highlighted. Stattdessen ein dezenter ◦.
+            cell.classList.add('active');
+            const span = document.createElement('span');
+            span.className = 'sort-indicator';
+            span.textContent = '◦';
+            cell.appendChild(span);
+        }
+    });
+}
+
+function _syncSortDropdown() {
+    // Mappe _currentSort auf den passenden Dropdown-Wert.
+    // id_asc und "leer" werden als "artist" angezeigt (Default-Look im Dropdown).
+    const dd = document.getElementById('filter-sort');
+    if (!dd) return;
+    const map = {
+        'artist_asc': 'artist',
+        'title_asc': 'title',
+        'title_desc': 'title',
+        'year_asc': 'year',
+        'year_desc': 'year',
+        'score_asc': 'score',
+        'score_desc': 'score',
+    };
+    const mapped = map[_currentSort] || 'artist';
+    dd.value = mapped;
+}
+
+function onDropdownSortChange() {
+    // Wenn der User per Dropdown wählt, müssen wir _currentSort und Header synchronisieren.
+    // Dropdown-Werte haben keine asc/desc-Info — wir setzen einen passenden Default
+    // (asc für die meisten, weil das die "normale" Lesart ist).
+    const dd = document.getElementById('filter-sort');
+    const val = dd.value;
+    if (val === 'random') {
+        _currentSort = 'random';
+    } else if (val === 'artist') {
+        _currentSort = '';  // Default, kein Indikator
+    } else {
+        // title, year, score → asc als Default
+        _currentSort = `${val}_asc`;
+        // year war im Dropdown "Neueste zuerst" = desc — behandeln wir speziell
+        if (val === 'year') _currentSort = 'year_desc';
+    }
+    _updateHeaderIndicators();
+    currentPage = 0;
+    loadSongs();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.song-h-cell.sortable').forEach(cell => {
+        cell.addEventListener('click', () => onHeaderSortClick(cell.dataset.sortKey));
+    });
+    _updateHeaderIndicators();
+});
+
 async function loadSongs() {
-    const q = document.getElementById('search-input').value;
-    const genre = document.getElementById('filter-genre').value;
-    const sort = document.getElementById('filter-sort').value;
-    const year = document.getElementById('filter-year').value;
+    // Visuelles Feedback: Suchen-Button deaktivieren, damit der User sieht,
+    // dass der Klick ankam und gerade gesucht wird. Vor allem auf Mobile,
+    // wo ein "nichts passiert"-Gefühl schnell als "geht nicht" missdeutet wird.
+    const searchBtn = document.querySelector('.filter-bar button.btn-primary');
+    const oldText = searchBtn ? searchBtn.textContent : null;
+    if (searchBtn) {
+        searchBtn.disabled = true;
+        searchBtn.textContent = '⏳ Suche…';
+    }
+    try {
+        const q = document.getElementById('search-input').value;
+        const genre = document.getElementById('filter-genre').value;
+        const year = document.getElementById('filter-year').value;
 
-    let url = `/api/songs?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}&sort=${sort}`;
-    if (q) url += `&q=${encodeURIComponent(q)}`;
-    if (genre) url += `&genre=${encodeURIComponent(genre)}`;
-    if (year) url += `&year=${encodeURIComponent(year)}`;
+        // Sort: Header-Klick (_currentSort) hat Vorrang vor Dropdown-Wert.
+        // Das Dropdown wird zwar synchron gehalten, aber wenn der User per Klick
+        // eine asc/desc-Wahl getroffen hat, ist _currentSort genauer.
+        let sort = _currentSort || document.getElementById('filter-sort').value;
+        // "id_asc" = unsortiert (Original-Reihenfolge) — Dropdown hat dafür keinen
+        // eigenen Wert, also behalten wir id_asc für den Backend-Call.
+        if (sort === 'id_asc') sort = 'id_asc';
 
-    const songs = await apiGet(url);
-    renderSongs(songs);
+        let url = `/api/songs?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}&sort=${sort}`;
+        if (q) url += `&q=${encodeURIComponent(q)}`;
+        if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+        if (year) url += `&year=${encodeURIComponent(year)}`;
 
-    // Update result count (approximate)
-    const totalShown = songs.length;
-    document.querySelector('.logo span').textContent = totalShown === PAGE_SIZE
-        ? `${PAGE_SIZE}+ Songs` : `${totalShown} Songs`;
+        const songs = await apiGet(url);
+        renderSongs(songs);
+
+        // Update result count (approximate)
+        const totalShown = songs.length;
+        document.querySelector('.logo span').textContent = totalShown === PAGE_SIZE
+            ? `${PAGE_SIZE}+ Songs` : `${totalShown} Songs`;
+
+        // Nach jedem Re-Render der Song-Liste die Play-Buttons (▶ vs +) sofort
+        // an den aktuellen Now-Playing-State anpassen. Sonos-Polling läuft nur alle
+        // 5s — wer zwischenzeitlich sucht/filtert, würde 5s auf das "+"-Icon warten.
+        if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
+    } catch (e) {
+        // Bei Fehler dem User Bescheid geben, statt stillschweigend zu scheitern
+        if (typeof toast === 'function') toast(`Suche fehlgeschlagen: ${e.message || e}`, true);
+        console.error('loadSongs failed:', e);
+    } finally {
+        if (searchBtn) {
+            searchBtn.disabled = false;
+            searchBtn.textContent = oldText || '🔍 Suchen';
+        }
+    }
 }
 
 function renderSongs(songs) {
@@ -935,7 +1230,11 @@ function renderSongs(songs) {
         el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;">Keine Songs gefunden</div>';
         return;
     }
-    el.innerHTML = songs.map((s, i) => `
+    el.innerHTML = songs.map((s, i) => {
+        const sc = s.score != null ? s.score : 50;
+        // Farbe: rot<40, gelb 40-60, grün>60
+        const scColor = sc < 40 ? '#e74c3c' : (sc < 60 ? '#f1c40f' : '#2ecc71');
+        return `
         <div class="song-row" data-id="${s.id}">
             <div class="song-num">${currentPage * PAGE_SIZE + i + 1}</div>
             <div class="song-title" title="${esc(s.title)}">${esc(s.title)}</div>
@@ -943,12 +1242,17 @@ function renderSongs(songs) {
             <div class="song-album">${esc(s.album)}</div>
             <div class="song-genre">${esc(s.genre)}</div>
             <div class="song-year">${s.year || ''}</div>
+            <div class="song-score" title="Ranking-Score (höher = besser)">
+                <div class="song-score-bar"><div class="song-score-bar-fill" style="width:${sc}%;background:${scColor};"></div></div>
+                <span class="song-score-value" style="color:${scColor};">${Math.round(sc)}</span>
+            </div>
             <div class="song-actions">
-                <button class="play-btn" onclick="playSong(${s.id})" title="Auf Sonos spielen">▶</button>
+                <button class="play-btn play-btn-direct" onclick="playSong(${s.id})" data-song-id="${s.id}" title="Auf Sonos spielen">▶</button>
                 <button class="play-btn" onclick="addToCurrentPlayingPlaylist(${s.id})" title="Zur aktuell laufenden Playlist" style="background:var(--bg-hover);font-size:0.7rem;">+</button>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     // Pagination
     const pg = document.getElementById('pagination');
@@ -1031,13 +1335,69 @@ function _wireConfirmButton(handler) {
 }
 
 async function playSong(id) {
-    // Speaker-Picker zeigen statt direkt abzuspielen
+    // Kontextabhängiges Verhalten:
+    //   Etwas spielt grad → direkt an Sonos-Queue anhängen (KEIN Speaker-Modal)
+    //   Nichts spielt      → Speaker-Picker wie bisher
+    // Der `_npLastState` wird im Polling gepflegt. Wir nutzen ihn als "spielt was"-Marker.
+    if (_npLastState && _npLastState.songId) {
+        try {
+            const r = await apiPost('/api/sonos/queue/add', {
+                song_id: id,
+                as_next: false  // ans Ende, nicht als nächstes
+            });
+            toast(`✓ ${r.song} → ${r.speaker} (Warteschlange +1)`);
+            // Queue-Länge im Hint sofort aktualisieren (nicht 3s auf Polling warten)
+            _updateQueueHint(r.speaker);
+        } catch (e) { toast(e.message, true); }
+        return;
+    }
+    // Nichts spielt → Speaker-Modal
     _pendingPlaySongId = id;
     const song = await apiGet(`/api/songs/${id}`);
     const speakers = await _showSpeakerPicker(`${song.artist} – ${song.title}`);
     if (!speakers) return;
     _renderSpeakerList(speakers);
     _wireConfirmButton(_doPlaySong);
+}
+
+// Kontextabhängige Beschriftung aller "Direkt-Play"-Buttons:
+//   _npLastState.songId gesetzt UND Speaker spielt → + (anhängen)
+//   sonst                                          → ▶ (neu starten)
+// Wird vom Polling aufgerufen, sobald sich der Now-Playing-State ändert.
+function _updateAllPlayButtons() {
+    // _npLastState ist eine modul-globale Variable (mit `let` deklariert, NICHT auf window).
+    // Wichtig: KEIN `window.` davor — das wäre undefined und der Button-Wechsel würde nie greifen.
+    // Wir zeigen "+" nur, wenn wir eine konkrete Song-ID haben (für die Queue).
+    // Wenn ein Radio/Stream läuft (songId=null), bleibt es bei ▶ — ein "+" würde
+    // ins Leere zeigen, weil es keine DB-Song-Queue gibt, an die angehängt werden könnte.
+    const hasQueue = !!(typeof _npLastState !== 'undefined' && _npLastState && _npLastState.songId);
+    const newIcon = hasQueue ? '+' : '▶';
+    const newTitle = hasQueue ? 'An Warteschlange anhängen' : 'Auf Sonos spielen';
+    document.querySelectorAll('.play-btn-direct').forEach(btn => {
+        if (btn.textContent.trim() !== newIcon) btn.textContent = newIcon;
+        if (btn.title !== newTitle) btn.title = newTitle;
+    });
+}
+
+// Queue-Hint rechts vom Pause-Button: zeigt "+N Weitere Lieder"
+// wenn die Sonos-Queue noch kommende Songs hat.
+async function _updateQueueHint(speaker) {
+    const el = document.getElementById('np-queue-hint');
+    if (!el) return;
+    // Optional: speaker-Argument kann die Anzeige beschleunigen (Fallback sonst null)
+    try {
+        const r = await apiGet('/api/sonos/now-playing-active');
+        if (r.speaker && r.queue_remaining > 0) {
+            el.textContent = `+${r.queue_remaining} ${r.queue_remaining === 1 ? 'Lied' : 'Lieder'}`;
+            el.title = `${r.queue_remaining} weitere${r.queue_remaining === 1 ? 's' : ''} Lied in der Warteschlange auf ${r.speaker}`;
+            el.classList.remove('hidden');
+        } else {
+            el.textContent = '';
+            el.classList.add('hidden');
+        }
+    } catch (e) {
+        el.classList.add('hidden');
+    }
 }
 
 async function _doPlaySong(selectedSpeakers) {
@@ -1054,6 +1414,8 @@ async function _doPlaySong(selectedSpeakers) {
         _npSpk1.textContent = `🔊 ${selectedSpeakers.join(' + ')}`;
         _npSpk1.dataset.speaker = selectedSpeakers[0];
         document.getElementById('now-playing').classList.remove('hidden');
+        // Play-Buttons der Liste sofort auf "+" umschalten — kein Warten auf 5s-Poll
+        if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
         toast(`▶ ${song.artist} – ${song.title} → ${selectedSpeakers.join(' + ')}`);
     } catch (e) { toast(e.message, true); }
 }
@@ -1088,6 +1450,7 @@ async function _doPlayFromPlaylist(selectedSpeakers) {
         document.getElementById('np-artist').textContent = 'Playlist wird geladen...';
         document.getElementById('np-playlist').textContent = `📋 ${pending.name}`;
         document.getElementById('now-playing').classList.remove('hidden');
+        if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
         toast(`▶ ${pending.name} → ${selectedSpeakers.join(' + ')}`);
     } catch (e) { toast(e.message, true); }
 }
@@ -1152,10 +1515,204 @@ async function sonosStop() {
 // === Now-Playing Polling ===
 let _npPollTimer = null;
 
+// Score-Tracking: merkt sich der letzten Poll (welcher Song, wie weit gespielt),
+// damit beim nächsten Poll erkannt wird ob der Song gewechselt hat.
+let _npLastState = null;  // {songId, relPct, songInfo}
+
+function parseTimeToSec(t) {
+    // Sonos liefert "0:42" oder "1:23:45" → Sekunden
+    if (!t) return 0;
+    const parts = String(t).split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return Number(t) || 0;
+}
+
+async function sendPlayEvent(event) {
+    // Like/Dislike für den aktuell laufenden Song schicken.
+    // Fallback: Wenn _npLastState leer ist, aber der Bar einen Song anzeigt,
+    // versuche die Song-ID per /api/sonos/now-playing zu holen. Wenn auch das
+    // fehlschlägt, dann erst die Toast-Meldung zeigen.
+    let songId = _npLastState?.songId;
+    if (!songId) {
+        try {
+            const np = await apiGet('/api/sonos/now-playing');
+            if (np && np.length > 0 && np[0].song) {
+                songId = np[0].song.id;
+            }
+        } catch (e) { /* gleich Fehler unten */ }
+    }
+    if (!songId) {
+        toast('Kein Song spielt gerade', true);
+        return;
+    }
+    try {
+        const r = await apiPost(`/api/songs/${songId}/play-event`, { event });
+        toast(`Score: ${r.score}${r.changed ? '' : ' (unverändert)'}`);
+        // Score-Anzeige sofort aktualisieren
+        _updateScoreDisplay(r.score);
+    } catch (e) {
+        toast(`Fehler: ${e.message}`, true);
+    }
+}
+
+function _updateScoreDisplay(score) {
+    const box = document.getElementById('np-score');
+    const val = document.getElementById('np-score-value');
+    const fill = document.getElementById('np-score-bar-fill');
+    if (!box || !val || !fill) return;
+    if (score == null) {
+        box.classList.add('hidden');
+        return;
+    }
+    box.classList.remove('hidden');
+    val.textContent = Math.round(score);
+    fill.style.width = `${score}%`;
+    // Farbe: rot<40, gelb 40-60, grün>60
+    if (score < 40) fill.style.background = '#e74c3c';
+    else if (score < 60) fill.style.background = '#f1c40f';
+    else fill.style.background = '#2ecc71';
+}
+
+// === Seek-Bar ===
+// Hängt am now-playing-Bar: zeigt rel_time / track_duration, klick+drag zum Springen.
+// Während Drag: fill+thumb zeigen die Ziel-Position (preview), erst nach mouseup wird geseekt.
+
+function _formatMMSS(sec) {
+    if (!sec || sec < 0) sec = 0;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function _updateSeekBar(relSec, durSec) {
+    const bar = document.getElementById('np-seek-bar');
+    const fill = document.getElementById('np-seek-fill');
+    const thumb = document.getElementById('np-seek-thumb');
+    const tCur = document.getElementById('np-seek-time');
+    const tDur = document.getElementById('np-seek-duration');
+    if (!bar || !fill || !thumb) return;
+
+    // Dauer
+    tDur.textContent = _formatMMSS(durSec);
+
+    // Während Drag zeigen wir NICHT den Live-Stand (sonst zappelt der Balken unter dem Cursor)
+    if (bar.classList.contains('dragging')) {
+        return;
+    }
+
+    // Seek ist nur sinnvoll, wenn wir eine Dauer haben
+    if (!durSec || durSec <= 0) {
+        fill.style.width = '0%';
+        thumb.style.left = '0%';
+        tCur.textContent = _formatMMSS(0);
+        bar.dataset.durSec = '0';
+        return;
+    }
+
+    const pct = Math.max(0, Math.min(100, (relSec / durSec) * 100));
+    fill.style.width = `${pct}%`;
+    thumb.style.left = `${pct}%`;
+    tCur.textContent = _formatMMSS(relSec);
+    bar.dataset.durSec = String(durSec);
+}
+
+function _seekBarPosToSec(bar, clientX) {
+    // clientX → Sekunden anhand der Balkenbreite
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const ratio = x / rect.width;
+    const dur = parseFloat(bar.dataset.durSec) || 0;
+    return ratio * dur;
+}
+
+function _setupSeekBarDrag() {
+    const bar = document.getElementById('np-seek-bar');
+    if (!bar || bar.dataset.bound === '1') return;
+    bar.dataset.bound = '1';
+
+    let isDragging = false;
+
+    function preview(clientX) {
+        const sec = _seekBarPosToSec(bar, clientX);
+        const dur = parseFloat(bar.dataset.durSec) || 0;
+        const pct = dur > 0 ? (sec / dur) * 100 : 0;
+        document.getElementById('np-seek-fill').style.width = `${pct}%`;
+        document.getElementById('np-seek-thumb').style.left = `${pct}%`;
+        document.getElementById('np-seek-time').textContent = _formatMMSS(sec);
+    }
+
+    function commit(clientX) {
+        const sec = _seekBarPosToSec(bar, clientX);
+        const speaker = document.getElementById('np-speaker').dataset.speaker;
+        if (!speaker) return;
+        apiPost('/api/sonos/seek', { speaker, position_sec: sec })
+            .then(() => { /* Backend updated — nächstes Polling zeigt neue Position */ })
+            .catch(e => toast(`Seek fehlgeschlagen: ${e.message}`, true));
+    }
+
+    bar.addEventListener('mousedown', (e) => {
+        if (!bar.dataset.durSec || bar.dataset.durSec === '0') return;
+        isDragging = true;
+        bar.classList.add('dragging');
+        preview(e.clientX);
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        preview(e.clientX);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        bar.classList.remove('dragging');
+        commit(e.clientX);
+    });
+
+    // Touch-Support (Mobile)
+    bar.addEventListener('touchstart', (e) => {
+        if (!bar.dataset.durSec || bar.dataset.durSec === '0') return;
+        isDragging = true;
+        bar.classList.add('dragging');
+        preview(e.touches[0].clientX);
+        e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        preview(e.touches[0].clientX);
+        e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchend', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        bar.classList.remove('dragging');
+        const t = e.changedTouches[0];
+        if (t) commit(t.clientX);
+    });
+}
+
+// Bind once beim Laden
+document.addEventListener('DOMContentLoaded', _setupSeekBarDrag);
+
 function startNowPlayingPoll() {
     if (_npPollTimer) return;  // schon aktiv
-    _npPollTimer = setInterval(pollNowPlaying, 5000);
-    pollNowPlaying();  // sofort einmal
+    // Schnell-Polling-Phase: alle 1s, bis wir die erste valide Antwort haben.
+    // Hintergrund: nach Browser-Reset kann der erste Backend-Call länger dauern
+    // (Service startet gerade, oder die `sonos`-CLI hat ein initiales Hängen).
+    // Erst nach dem ersten Treffer gehen wir auf 5s-Intervall — spart Last.
+    const _fastTick = async () => {
+        const ok = await pollNowPlaying();
+        if (ok) {
+            // Erste Antwort da → auf 5s-Takt umschalten
+            if (_npPollTimer) { clearInterval(_npPollTimer); _npPollTimer = null; }
+            _npPollTimer = setInterval(pollNowPlaying, 5000);
+        }
+    };
+    _npPollTimer = setInterval(_fastTick, 1000);
+    _fastTick();
 }
 
 function stopNowPlayingPoll() {
@@ -1169,13 +1726,88 @@ async function pollNowPlaying() {
     try {
         const data = await apiGet('/api/sonos/now-playing');
         updateNowPlayingBar(data);
+
+        // Skip-/Complete-Detection: wenn der Song seit letztem Poll gewechselt hat,
+        // schicken wir ein Play-Event für den vorigen Song (mit der damals
+        // gespielten Prozentzahl). Backend entscheidet dann via EWMA.
+        // WICHTIG: _npLastState NUR löschen, wenn der Endpoint eine ECHTE leere
+        // Liste liefert UND es nicht einfach ein Sonos-Subprocess-Timeout war.
+        // Sonst verliert Like/Dislike zwischenzeitlich den Bezug.
+        if (data && data.length > 0) {
+            const info = data[0];
+            const curSongId = info.song ? info.song.id : null;
+            const curRelSec = parseTimeToSec(info.rel_time);
+            const curDurSec = parseTimeToSec(info.track_duration);
+            const curRelPct = curDurSec > 0 ? curRelSec / curDurSec : 0;
+
+            if (_npLastState && _npLastState.songId && curSongId && curSongId !== _npLastState.songId) {
+                // Song-Wechsel erkannt → Event für den vorigen Song schicken
+                try {
+                    await apiPost(`/api/songs/${_npLastState.songId}/play-event`, {
+                        event: `rel_pct:${_npLastState.relPct.toFixed(3)}`,
+                    });
+                } catch (e) { /* stillschweigend — darf Ranking nicht blocken */ }
+            }
+
+            // State für nächsten Poll merken.
+            // WICHTIG: Auch wenn curSongId null ist (Sonos spielt was ohne DB-Match,
+            // z.B. Radio), müssen wir _npLastState setzen — sonst denkt das UI
+            // "nichts spielt" und blendet keine "+"-Buttons ein.
+            // Song-ID ist optional; Like/Dislike funktioniert dann halt nicht.
+            _npLastState = {
+                songId: curSongId,  // kann null sein bei Radio/Stream
+                relPct: curRelPct,
+                songInfo: info.song,
+                speaker: info.speaker,
+                state: info.state,
+            };
+            if (curSongId) {
+                // Score des aktuellen Songs sofort anzeigen (Backend liefert ihn mit)
+                if (info.song && info.song.score != null) {
+                    _updateScoreDisplay(info.song.score);
+                }
+            }
+            // Timestamp: wann haben wir das letzte Mal was gesehen?
+            _npLastState.lastSeen = Date.now();
+        } else {
+            // Endpoint lieferte leere Liste. Mögliche Gründe:
+            // 1. Wirklich nichts spielt (Speaker aus / alles stopped) → State löschen
+            // 2. Sonos-Subprocess hat gerade geholzt / Timeout → State behalten
+            //
+            // Heuristik: Wenn der letzte State weniger als 60s her ist, ist es
+            // sehr wahrscheinlich ein temporäres Polling-Problem, kein echter Stop.
+            // Erst nach 60s ohne Daten löschen wir den State.
+            if (_npLastState && _npLastState.songId) {
+                const age = Date.now() - (_npLastState.lastSeen || 0);
+                if (age > 60000) {
+                    _npLastState = null;
+                }
+                // Sonst: State behalten, Like/Dislike funktioniert weiter
+            }
+        }
+        // Timestamp für "letzter guter Poll" aktualisieren
+        if (_npLastState) _npLastState.lastSeen = Date.now();
+
         // Pause-Button-Text mit dem echten State synchronisieren
         // (PLAYING → ⏸ Pause, PAUSED → ▶ Weiter). Polling liefert jetzt auch
         // pausierte Speaker, sodass die Bar bei Pause sichtbar bleibt.
         if (data && data.length > 0 && data[0].state) {
             _updatePauseButton(data[0].state);
         }
-    } catch (e) { /* stillschweigend */ }
+
+        // Play-Button-Icon in der Song-Liste kontextabhängig umschalten
+        // (▶ wenn nichts spielt, + wenn was spielt → "anhängen")
+        _updateAllPlayButtons();
+
+        // Queue-Hint ("+N Weitere Lieder") aktualisieren
+        _updateQueueHint();
+
+        // Schnell-Poll-Phase: gültige Antwort → auf 5s umschalten
+        return true;
+    } catch (e) {
+        // Fehler → in der Schnell-Phase bleiben, damit der UI sich erholt
+        return false;
+    }
 }
 
 function updateNowPlayingBar(playing) {
@@ -1216,15 +1848,10 @@ function updateNowPlayingBar(playing) {
     spkEl.textContent = `🔊 ${info.speaker}`;
     spkEl.dataset.speaker = info.speaker;
 
-    // Dauer / Position
-    const durEl = document.getElementById('np-duration');
-    if (info.rel_time && info.track_duration) {
-        durEl.textContent = `${info.rel_time} / ${info.track_duration}`;
-    } else if (info.track_duration) {
-        durEl.textContent = info.track_duration;
-    } else {
-        durEl.textContent = '';
-    }
+    // Seek-Bar mit aktueller Position füllen (aktualisiert auch np-seek-time + np-seek-duration)
+    const relSec = parseTimeToSec(info.rel_time);
+    const durSec = parseTimeToSec(info.track_duration);
+    _updateSeekBar(relSec, durSec);
 
     // Mehrere Speaker? Dann ersten nehmen, aber Hinweis
     if (playing.length > 1) {
@@ -1433,9 +2060,12 @@ async function _doPlayPlaylist(selectedSpeakers) {
         const spk = document.getElementById('np-speaker');
         spk.textContent = `🔊 ${selectedSpeakers.join(' + ')}`;
         spk.dataset.speaker = selectedSpeakers[0];
-        document.getElementById('np-duration').textContent = '';
+        document.getElementById('np-seek-duration').textContent = '0:00';
+        document.getElementById('np-seek-time').textContent = '0:00';
         document.getElementById('now-playing').classList.remove('hidden');
         const verb = shuffle ? '🔀 Zufall' : '▶';
+        // Play-Buttons der Liste sofort auf "+" umschalten — kein Warten auf 5s-Poll
+        if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
         toast(`${verb} ${name} auf ${selectedSpeakers.join(' + ')}`);
     } catch (e) { toast(e.message, true); }
 }
