@@ -43,8 +43,9 @@ def _start_nas_http_server():
     if _nas_http_server is not None:
         return
     try:
-        socketserver.TCPServer.allow_reuse_address = True
-        srv = socketserver.TCPServer(("", NAS_HTTP_PORT), _SilentHandler)
+        from http.server import ThreadingHTTPServer
+        ThreadingHTTPServer.allow_reuse_address = True
+        srv = ThreadingHTTPServer(("", NAS_HTTP_PORT), _SilentHandler)
         t = threading.Thread(target=srv.serve_forever, daemon=True, name="nas-http")
         t.start()
         _nas_http_server = srv
@@ -100,6 +101,7 @@ class SongResponse(BaseModel):
     mood: str | None = ""
     tags: str | None = ""
     filepath: str | None = ""
+    score: float = 50.0
 
     class Config:
         from_attributes = True
@@ -233,15 +235,48 @@ def search_songs(
         query = query.filter(Song.bpm <= bpm_max)
 
     # Sortierung
+    # Dropdown-Werte (Legacy, weiter unterstützt):
+    #   artist / title / year / bpm / score / random
+    # Klick-auf-Header-Werte (neu, mit Richtung):
+    #   <field>_asc / <field>_desc   (field ∈ id, title, artist, album, genre, year, score)
+    #   "id_asc" = Original-Reihenfolge (DB-Einfügereihenfolge)
     if sort == "title":
-        query = query.order_by(Song.title)
+        query = query.order_by(Song.title, Song.artist)
+    elif sort == "title_asc":
+        query = query.order_by(Song.title.asc(), Song.artist)
+    elif sort == "title_desc":
+        query = query.order_by(Song.title.desc(), Song.artist)
+    elif sort == "artist_asc":
+        query = query.order_by(Song.artist.asc(), Song.title)
+    elif sort == "artist_desc":
+        query = query.order_by(Song.artist.desc(), Song.title)
+    elif sort == "album_asc":
+        query = query.order_by(Song.album.asc(), Song.artist, Song.title)
+    elif sort == "album_desc":
+        query = query.order_by(Song.album.desc(), Song.artist, Song.title)
+    elif sort == "genre_asc":
+        query = query.order_by(Song.genre.asc(), Song.artist, Song.title)
+    elif sort == "genre_desc":
+        query = query.order_by(Song.genre.desc(), Song.artist, Song.title)
     elif sort == "year":
         query = query.order_by(Song.year.desc())
+    elif sort == "year_asc":
+        query = query.order_by(Song.year.asc().nullslast(), Song.artist, Song.title)
+    elif sort == "year_desc":
+        query = query.order_by(Song.year.desc().nullslast(), Song.artist, Song.title)
     elif sort == "bpm":
         query = query.order_by(Song.bpm.desc().nullslast())
+    elif sort == "score":
+        query = query.order_by(Song.score.desc().nullslast())
+    elif sort == "score_asc":
+        query = query.order_by(Song.score.asc().nullslast(), Song.artist, Song.title)
+    elif sort == "score_desc":
+        query = query.order_by(Song.score.desc().nullslast(), Song.artist, Song.title)
+    elif sort == "id_asc":
+        query = query.order_by(Song.id.asc())  # unsortiert = Original-Reihenfolge
     elif sort == "random":
         query = query.order_by(func.random())
-    else:  # artist
+    else:  # artist (default)
         query = query.order_by(Song.artist, Song.title)
 
     results = query.offset(offset).limit(limit).all()
@@ -255,6 +290,61 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
     if not song:
         raise HTTPException(status_code=404, detail="Song nicht gefunden")
     return SongResponse(**{k: getattr(song, k, None) for k in SongResponse.model_fields})
+
+
+# === Play-Event für Song-Ranking (EWMA-basiert) ===
+# Frontend schickt Events, wenn:
+#   - Song komplett gespielt wurde (Auto-Advance → neuer Song im Poll)
+#   - User überspringt manuell (Nächster-Titel-Klick)
+#   - User klickt 👍/👎 in der Now-Playing-Bar
+# rel_pct wird vom Frontend aus letztem Polling abgeleitet (rel_time / track_duration).
+
+class PlayEventRequest(BaseModel):
+    event: str  # "completed" | "skipped_50_90" | "skipped_10_50" | "skipped_lt_10" | "like" | "dislike"
+
+
+@app.post("/api/songs/{song_id}/play-event")
+def record_play_event(song_id: int, req: PlayEventRequest, db: Session = Depends(get_db)):
+    """Speichert ein Play-Event und updated den Song-Score via EWMA.
+
+    Akzeptiert auch "skipped_lt_10" — in dem Fall wird der Score NICHT
+    geändert (Test/Falsches Lied), der Endpoint bestätigt das aber mit
+    "changed": False, damit das Frontend Feedback bekommt.
+
+    Returns: {"song_id", "event", "score": <neuer Wert>, "changed": bool}
+    """
+    from .scoring import update_score, compute_event
+
+    song = db.query(Song).filter(Song.id == song_id).first()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song nicht gefunden")
+
+    # compute_event mappt eine gespielte Prozentzahl (0.0–1.0) auf den Event-Namen.
+    # Für Frontend-Komfort akzeptieren wir entweder das fertige Event ODER
+    # die Prozentzahl (rel_pct) — das spart Logik im Frontend.
+    if req.event.startswith("rel_pct:"):
+        try:
+            rel_pct = float(req.event.split(":", 1)[1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Ungültiges rel_pct in '{req.event}'")
+        event = compute_event(rel_pct)
+    else:
+        event = req.event
+
+    old_score = song.score if song.score is not None else 50.0
+    new_score = update_score(old_score, event)
+
+    if new_score != old_score:
+        song.score = new_score
+        db.commit()
+        db.refresh(song)
+
+    return {
+        "song_id": song_id,
+        "event": event,
+        "score": round(new_score, 2),
+        "changed": new_score != old_score,
+    }
 
 
 @app.get("/api/artists")
@@ -850,11 +940,42 @@ def rediscover_speakers():
 
 def _sonos_cmd(args, timeout=10):
     """sonos CLI ausführen"""
-    result = subprocess.run(
+    import signal
+    proc = subprocess.Popen(
         [SONOS_CLI] + args,
-        capture_output=True, text=True, timeout=timeout
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        # Eigene process group: wenn wir SIGKILL an die Gruppe schicken,
+        # sterben auch eventuelle Sub-Children der Go-Binary.
+        preexec_fn=os.setsid,
     )
-    return result
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(
+            args=[SONOS_CLI] + args,
+            returncode=proc.returncode,
+            stdout=stdout or "",
+            stderr=stderr or "",
+        )
+    except subprocess.TimeoutExpired:
+        # Go-Binary ignoriert SIGTERM. Wir killen die ganze Process-Group
+        # mit SIGKILL, damit der Subprocess garantiert weg ist.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            proc.kill()
+        # communicate() mit kürzerem Timeout, um die restlichen Bytes zu lesen
+        try:
+            stdout, stderr = proc.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            stdout, stderr = "", ""
+        return subprocess.CompletedProcess(
+            args=[SONOS_CLI] + args,
+            returncode=-1,
+            stdout="",
+            stderr="timeout",
+        )
 
 
 def _get_speaker_name(speaker):
@@ -1020,19 +1141,37 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
             _sonos_cmd(["volume", "set", "--name", spk, str(cmd.volume)])
 
     if cmd.song_id:
-        # Einzelnen Song spielen – NAS-Datei über x-file-cifs URI
+        # Einzelnen Song spielen. Wir nutzen SoCo + HTTP-URL (NICHT die HA-CLI play-uri) — sonst
+        # kein Auto-Advance, wenn der User nachher weitere Lieder anhängt. Die HA-CLI startet
+        # einen einzelnen Track ohne Queue-Konzept, der State geht auf STOPPED statt zum
+        # nächsten Item zu springen.
+        # Hintergrund: clear_queue + add_to_queue + play_from_queue baut eine echte Queue
+        # auf, in die add_to_queue weitere Items korrekt einfügen kann.
         song = db.query(Song).filter(Song.id == cmd.song_id).first()
         if not song:
             raise HTTPException(status_code=404, detail="Song nicht gefunden")
 
-        # x-file-cifs URI: NAS-Freigabe-Pfad
-        rel_path = song.filepath.replace(NAS_MUSIC_PATH, "")
-        file_uri = f"x-file-cifs://{NAS_SMB_HOST}/{NAS_SMB_SHARE}{rel_path}"
+        # Speaker-IP
+        spk_info = _get_sonos_speakers().get(speaker, {})
+        speaker_ip = spk_info.get("ip")
+        if not speaker_ip:
+            raise HTTPException(status_code=404, detail=f"Speaker-IP für '{speaker}' nicht gefunden")
 
-        r = _sonos_cmd(["play-uri", "--name", speaker, file_uri])
-        if r.returncode != 0:
-            # Fallback: Versuche es ohne x-file-cifs
-            raise HTTPException(status_code=500, detail=f"Sonos Fehler: {r.stderr.strip() or r.stdout.strip()}")
+        # HTTP-URL + DidlMusicTrack bauen (NUL-Bytes strippen, Sonderzeichen escapen)
+        from soco.data_structures import DidlMusicTrack as _Didl, DidlResource as _Res
+        http_url = _http_url_for_song(song)
+        def _clean(s):
+            return (s or "").replace("\x00", "").strip() or None
+        title = _clean(f"{song.artist} - {song.title}") or song.filename
+        resource = _Res(uri=http_url, protocol_info="http-get:*:audio/mpeg:*")
+        item = _Didl(title=title, parent_id="R:0/0", item_id=f"R:0/0/{song.id}", resources=[resource])
+
+        # SoCo: clear + add + play_from_queue(0)
+        import soco as _soco
+        device = _soco.SoCo(speaker_ip)
+        device.clear_queue()
+        device.add_to_queue(item)
+        device.play_from_queue(0)
 
         result_detail = f"{song.artist} - {song.title}"
 
@@ -1073,10 +1212,16 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
 
                 def _build_item(song):
                     rel = song.filepath.replace(NAS_MUSIC_PATH, "").lstrip("/")
-                    http_url = f"http://{_local_ip()}:{NAS_HTTP_PORT}/{quote(rel)}"
+                    # safe='/' damit Verzeichnistrenner bleibt; alles andere (eckige Klammern, Leerzeichen, etc.) escapen.
+                    # Sonst scheitert add_to_queue() mit "Internal Server Error" bei Files mit Sonderzeichen.
+                    http_url = f"http://{_local_ip()}:{NAS_HTTP_PORT}/{quote(rel, safe='/')}"
                     resource = DidlResource(uri=http_url, protocol_info="http-get:*:audio/mpeg:*")
+                    # NUL-Bytes (\x00) aus artist/title strippen — sonst Internal Server Error.
+                    def _clean(s):
+                        return (s or "").replace("\x00", "").strip() or None
+                    title = _clean(f"{song.artist} - {song.title}") or song.filename
                     return DidlMusicTrack(
-                        title=f"{song.artist or ''} - {song.title or song.filename}".strip(" -") or song.filename,
+                        title=title,
                         parent_id="R:0/0",
                         item_id=f"R:0/0/{song.id}",
                         resources=[resource],
@@ -1238,11 +1383,14 @@ def sonos_play_from_playlist(req: PlayFromPlaylistRequest, db: Session = Depends
 
     # 5) Erste Datei via HTTP-URL als Track bauen und direkt spielen
     def _build_item(song):
-        rel = song.filepath.replace(NAS_MUSIC_PATH, "").lstrip("/")
-        http_url = f"http://{_local_ip()}:{NAS_HTTP_PORT}/{quote(rel)}"
+        http_url = _http_url_for_song(song)
         resource = DidlResource(uri=http_url, protocol_info="http-get:*:audio/mpeg:*")
+        # NUL-Bytes (\x00) aus artist/title strippen — sonst Internal Server Error.
+        def _clean(s):
+            return (s or "").replace("\x00", "").strip() or None
+        title = _clean(f"{song.artist} - {song.title}") or song.filename
         return DidlMusicTrack(
-            title=f"{song.artist or ''} - {song.title or song.filename}".strip(" -") or song.filename,
+            title=title,
             parent_id="R:0/0",
             item_id=f"R:0/0/{song.id}",
             resources=[resource],
@@ -1309,10 +1457,14 @@ def sonos_queue_add(req: QueueAddRequest, db: Session = Depends(get_db)):
     if not ip:
         raise HTTPException(status_code=404, detail=f"Speaker-IP für '{speaker}' nicht gefunden")
 
-    # URL bauen: lokaler HTTP-Stream auf Port 8898
-    rel = song.filepath.replace(NAS_MUSIC_PATH, "").lstrip("/")
-    from urllib.parse import quote
-    http_url = f"http://{_local_ip()}:{NAS_HTTP_PORT}/{quote(rel)}"
+    # URL bauen: lokaler HTTP-Stream auf Port 8898 (mit ?sid=… als ID-Marker)
+    http_url = _http_url_for_song(song)
+
+    # NUL-Bytes (\x00) aus Strings strippen — die DB hat bei manchen Songs (Migration-Bug)
+    # NUL-Bytes am Anfang von artist/title. SoCo/DIDL-Parser mögen das nicht → 500.
+    def _clean(s):
+        return (s or "").replace("\x00", "").strip() or None
+    title_clean = _clean(f"{song.artist} - {song.title}") or song.filename
 
     # Via SoCo zur Queue hinzufügen
     import soco
@@ -1320,16 +1472,28 @@ def sonos_queue_add(req: QueueAddRequest, db: Session = Depends(get_db)):
     device = soco.SoCo(ip)
     resource = DidlResource(uri=http_url, protocol_info="http-get:*:audio/mpeg:*")
     item = DidlMusicTrack(
-        title=f"{song.artist or ''} - {song.title or song.filename}".strip(" -") or song.filename,
+        title=title_clean,
         parent_id="R:0/0",
         item_id=f"R:0/0/{song.id}",
         resources=[resource],
     )
-    pos = device.add_to_queue(item, as_next=req.as_next)
+    # SoCo: position=0 heißt lt. Doku "ans ENDE" — aber nur wenn queue_size > 0.
+    # Bei queue_size=0 (CurrentTrack wird "direkt gespielt", nicht aus Queue) wird
+    # mit position=0 das neue Item auf Pos 1 eingefügt und überschreibt den
+    # CurrentTrack. Symptom: nach Ende des CurrentTrack kommt nichts mehr.
+    # Fix: aktuelle Playlist-Position holen + 1 = Position direkt nach CurrentTrack.
+    # Das ist semantisch "als nächstes" — was der User sowieso erwartet.
+    current_pos = device.get_current_track_info().get("playlist_position") or 1
+    try:
+        current_pos = int(current_pos)
+    except (TypeError, ValueError):
+        current_pos = 1
+    insert_pos = max(2, current_pos + 1)
+    pos = device.add_to_queue(item, position=insert_pos, as_next=False)
     return {
         "status": "queued",
         "speaker": speaker,
-        "song": f"{song.artist} - {song.title}",
+        "song": title_clean,
         "queue_position": pos,
         "as_next": req.as_next,
         "uri": http_url,
@@ -1348,17 +1512,37 @@ def _currently_playing_speaker() -> str | None:
 def sonos_now_playing_active():
     """Welcher Speaker spielt grad? Für das Add-to-Queue-Modal im Frontend.
 
-    Gibt {speaker, playlist_name, song_id} oder {} wenn nichts spielt.
+    Gibt {speaker, playlist_name, song_id, queue_remaining} oder {} wenn nichts spielt.
     Schneller als /api/sonos/now-playing — geht direkt in den Backend-Cache.
+    queue_remaining = Anzahl der noch kommenden Songs in der Sonos-Queue (nach dem aktuellen).
     """
     sp = _currently_playing_speaker()
     if not sp:
         return {"speaker": None}
     info = _sonos_playing.get(sp, {})
+    # Queue-Länge live von Sonos holen (kostet 1x SOAP-Call pro Polling-Cycle, gecached)
+    queue_remaining = 0
+    try:
+        speakers = _get_sonos_speakers()
+        spk_info = speakers.get(sp, {})
+        ip = spk_info.get("ip")
+        if ip:
+            import soco
+            device = soco.SoCo(ip)
+            # queue_size liefert die GESAMTE Queue inkl. aktuellem Track
+            total = device.queue_size
+            # Aktuelle Position: CurrentTrackURI-Nummer, 1-basiert
+            current_track = device.get_current_track_info().get("playlist_position")
+            if current_track and total and total > 0:
+                queue_remaining = max(0, int(total) - int(current_track))
+    except Exception:
+        # Sonos-Subprocess kann flaky sein — 0 ist OK (lieber kein Hinweis als 500)
+        pass
     return {
         "speaker": sp,
         "playlist_name": info.get("playlist_name"),
         "song_id": info.get("song_id"),
+        "queue_remaining": queue_remaining,
     }
 
 
@@ -1371,6 +1555,48 @@ def _local_ip() -> str:
         return s.getsockname()[0]
     finally:
         s.close()
+
+
+def _http_url_for_song(song) -> str:
+    """Baut die HTTP-Stream-URL für einen Song.
+
+    Wir betten die DB-Song-ID als Query-String in die URL ein, damit der
+    now-playing-Endpoint den gespielten Song zu 100% identifizieren kann
+    — auch wenn artist/title kaputt sind (NUL-Bytes, Truncation).
+
+    Format: http://IP:PORT/radio/.../song.mp3?sid=12345
+                                    \_______________/  \____/
+                                       Webserver-Pfad   ID-Marker
+
+    Sonos schickt die URI vollständig zurück. Wir parsen sid=NNNN, holen
+    die DB-Zeile direkt — keine Heuristik, keine ilike %x%.
+
+    Der Webserver (SimpleHTTP) ignoriert Query-Strings beim File-Mapping,
+    d.h. die Datei wird ganz normal aus /tmp/nas-musik/... gestreamt.
+    """
+    from urllib.parse import quote
+    rel = song.filepath.replace(NAS_MUSIC_PATH, "").lstrip("/")
+    quoted = quote(rel, safe="/")
+    return f"http://{_local_ip()}:{NAS_HTTP_PORT}/{quoted}?sid={song.id}"
+
+
+def _extract_song_id_from_uri(uri: str):
+    """Parst die sid=NNNN aus einer Sonos-Track-URI.
+
+    Gibt die song_id (int) zurück, oder None wenn keine sid da ist
+    (z.B. bei x-file-cifs:// Streams oder Radio-URLs, die nicht von uns kommen).
+    """
+    if not uri or "sid=" not in uri:
+        return None
+    try:
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(uri).query)
+        sid_list = qs.get("sid", [])
+        if sid_list:
+            return int(sid_list[0])
+    except (ValueError, TypeError):
+        return None
+    return None
 
 
 @app.post("/api/sonos/pause")
@@ -1425,14 +1651,87 @@ def sonos_stop(cmd: SonosCommand):
     return {"status": "stopped", "speaker": speaker}
 
 
+# === Seek (zu einer bestimmten Position im Track springen) ===
+# UPnP-AVTransport.Seek mit Unit="REL_TIME" und Target="HH:MM:SS".
+# Die `sonos`-CLI unterstützt kein seek — wir machen den UPnP-Call selbst,
+# analog zu _enqueue_cifs.
+
+class SeekRequest(BaseModel):
+    speaker: str
+    position_sec: float  # Position in Sekunden; wird zu HH:MM:SS formatiert
+
+
+def _sec_to_hms(sec: float) -> str:
+    """Sekunden (float) → 'H:MM:SS' Format, das Sonos erwartet."""
+    if sec < 0:
+        sec = 0
+    total = int(sec)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    return f"{h}:{m:02d}:{s:02d}"
+
+
+def _sonos_seek(speaker_ip: str, target_hms: str) -> None:
+    """UPnP-AVTransport.Seek an einen Speaker senden."""
+    import requests as _requests
+    soap = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+        's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
+        '<s:Body><u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">'
+        '<InstanceID>0</InstanceID>'
+        f'<Unit>REL_TIME</Unit>'
+        f'<Target>{target_hms}</Target>'
+        '</u:Seek></s:Body></s:Envelope>'
+    )
+    r = _requests.post(
+        f"http://{speaker_ip}:1400/MediaRenderer/AVTransport/Control",
+        headers={
+            "Content-Type": 'text/xml; charset="utf-8"',
+            "SOAPAction": '"urn:schemas-upnp-org:service:AVTransport:1#Seek"',
+        },
+        data=soap.encode("utf-8"),
+        timeout=5,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Seek HTTP {r.status_code}: {r.text[:200]}")
+    if "<s:Fault" in r.text or "Fault" in r.text[:300]:
+        raise RuntimeError(f"Seek UPnP fault: {r.text[:200]}")
+
+
+@app.post("/api/sonos/seek")
+def sonos_seek_endpoint(req: SeekRequest):
+    """Springe zu einer bestimmten Position (in Sekunden) im aktuellen Track."""
+    speaker = _get_speaker_name(req.speaker)
+    speakers = _get_sonos_speakers()
+    ip = speakers.get(speaker, {}).get("ip")
+    if not ip:
+        raise HTTPException(status_code=404, detail=f"Speaker-IP für '{speaker}' nicht gefunden")
+    if req.position_sec < 0:
+        raise HTTPException(status_code=400, detail="position_sec muss >= 0 sein")
+    target_hms = _sec_to_hms(req.position_sec)
+    try:
+        _sonos_seek(ip, target_hms)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Seek fehlgeschlagen: {e}")
+    return {"status": "seeked", "speaker": speaker, "position_sec": req.position_sec, "target": target_hms}
+
+
 @app.get("/api/sonos/now-playing")
 def sonos_now_playing(db: Session = Depends(get_db)):
     """Aktuelle Wiedergabe auf allen Speakern (für Now-Playing-Bar)"""
+    import time as _t
+    _t0 = _t.time()
+    print(f"[now-playing] ENTER", flush=True)
     speakers = _get_sonos_speakers()
+    print(f"[now-playing] speakers={list(speakers.keys())} (took {_t.time()-_t0:.2f}s)", flush=True)
     result = []
     for name, info in speakers.items():
         if "fernsehraum" in name.lower() or "tv" in name.lower():
             continue
+        _t1 = _t.time()
+        print(f"[now-playing] start {name}", flush=True)
         try:
             st = _sonos_cmd(["status", "--name", name, "--format", "json"])
             if st.returncode != 0 or not st.stdout.strip():
@@ -1460,20 +1759,32 @@ def sonos_now_playing(db: Session = Depends(get_db)):
                 "_ts": time.time(),
             }
 
-            # Versuche Song aus DB anhand des URIs zu finden
+            # Versuche Song aus DB anhand des URIs zu finden.
+            # Drei Wege, in der Reihenfolge ihrer Zuverlässigkeit:
+            # 1. HTTP-URL mit ?sid=NNNN (von uns gebaut) → direkter Lookup
+            # 2. x-file-cifs:// (alter SMB-Weg) → Filepath-Lookup
+            # 3. Keine Zuordnung möglich → song_info bleibt None (UI zeigt Filename)
             song_info = None
-            if uri and uri.startswith("x-file-cifs://"):
+            song = None
+            sid = _extract_song_id_from_uri(uri)
+            if sid is not None:
+                song = db.query(Song).filter(Song.id == sid).first()
+            if song is None and uri and uri.startswith("x-file-cifs://"):
                 rel_path = uri.replace(f"x-file-cifs://{NAS_SMB_HOST}/{NAS_SMB_SHARE}", "")
                 from urllib.parse import unquote as _unquote
                 local_path = NAS_MUSIC_PATH + _unquote(rel_path)
                 song = db.query(Song).filter(Song.filepath == local_path).first()
-                if song:
-                    song_info = {
-                        "id": song.id,
-                        "artist": song.artist,
-                        "title": song.title,
-                        "album": song.album or "",
-                    }
+            if song is not None:
+                # NUL-Bytes defensiv rauswerfen (UI kann sie nicht anzeigen)
+                def _clean_db(s, fallback=""):
+                    return (s or "").replace("\x00", "").strip() or fallback
+                song_info = {
+                    "id": song.id,
+                    "artist": _clean_db(song.artist, "—"),
+                    "title": _clean_db(song.title, song.filename or "—"),
+                    "album": _clean_db(song.album, ""),
+                    "score": song.score if song.score is not None else 50.0,
+                }
 
             # Playlist-Name aus Memory
             playlist_name = _sonos_playing.get(name, {}).get("playlist_name")
@@ -1494,8 +1805,14 @@ def sonos_now_playing(db: Session = Depends(get_db)):
                 "track_duration": track_duration,
                 "rel_time": rel_time,
             })
-        except Exception:
+        except Exception as e:
+            import traceback
+            print(f"[now-playing] {name}: {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
             continue
+        finally:
+            print(f"[now-playing] end {name} (took {_t.time()-_t1:.2f}s)", flush=True)
+    print(f"[now-playing] EXIT (total {_t.time()-_t0:.2f}s, {len(result)} speakers)", flush=True)
     return result
 
 
