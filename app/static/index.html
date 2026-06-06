@@ -166,15 +166,17 @@
         }
         .song-header {
             display: grid;
-            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 90px 60px;
-            gap: 8px;
-            padding: 8px 12px;
-            font-size: 0.75rem;
+            grid-template-columns: 30px 1fr 110px 70px;
+            gap: 10px;
+            padding: 6px 12px;
+            font-size: 0.7rem;
             color: var(--text-dim);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             border-bottom: 1px solid var(--border);
         }
+        .song-header .h-num { text-align: right; }
+        .song-header .h-actions { text-align: center; }
         .song-h-cell { user-select: none; }
         .song-h-cell.sortable {
             cursor: pointer;
@@ -190,9 +192,9 @@
         }
         .song-row {
             display: grid;
-            grid-template-columns: 40px 1fr 1fr 0.7fr 0.5fr 0.5fr 90px 60px;
-            gap: 8px;
-            padding: 10px 12px;
+            grid-template-columns: 30px 1fr 110px 70px;
+            gap: 10px;
+            padding: 8px 12px;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.15s;
@@ -201,12 +203,11 @@
         }
         .song-row:hover { background: var(--bg-hover); }
         .song-row.playing { background: var(--accent-glow); border-left: 3px solid var(--accent); }
-        .song-num { color: var(--text-dim); font-size: 0.8rem; }
+        .song-num { color: var(--text-dim); font-size: 0.8rem; text-align: right; }
+        .song-info { min-width: 0; }  /* für ellipsis */
         .song-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .song-artist { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .song-album { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .song-genre { color: var(--accent-light); font-size: 0.8rem; }
-        .song-year { color: var(--text-dim); font-size: 0.85rem; }
+        .song-meta { color: var(--text-dim); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        .song-meta .sep { opacity: 0.5; margin: 0 4px; }
         .song-score { display: flex; align-items: center; gap: 6px; }
         .song-score-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
         .song-score-bar-fill { height: 100%; transition: width 0.3s ease; }
@@ -252,22 +253,25 @@
         .playlist-header h2 { font-size: 1.2rem; }
         .pl-name-text:hover { text-decoration: underline dotted; }
         .pl-toggle-icon:hover { background: var(--bg-hover); }
-        .playlist-tracks { display: flex; flex-direction: column; gap: 4px; }
+        .playlist-tracks { display: flex; flex-direction: column; gap: 2px; }
+        /* Playlist-Track: gleiches Grid-Layout wie song-row, plus Reorder-Buttons
+           in Spalte 1, Like/Dislike in Score-Spalte, Remove-Button am Ende */
         .playlist-track {
-            display: flex;
-            align-items: center;
+            display: grid;
+            grid-template-columns: 50px 1fr 160px 70px 30px;
             gap: 10px;
-            padding: 8px 12px;
+            padding: 6px 12px;
             border-radius: 8px;
             transition: background 0.15s;
+            align-items: center;
+            font-size: 0.9rem;
         }
         .playlist-track:hover { background: var(--bg-hover); }
-        .playlist-track-num { color: var(--text-dim); width: 24px; text-align: right; font-size: 0.85rem; }
-        .playlist-track-reorder { display: flex; flex-direction: column; gap: 2px; }
+        .playlist-track-num { color: var(--text-dim); font-size: 0.8rem; text-align: right; }
+        .playlist-track-num-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+        .playlist-track-reorder { display: flex; flex-direction: row; gap: 2px; }
+        .playlist-track-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .btn-reorder {
-            background: transparent;
-            border: 1px solid var(--border, #444);
-            color: var(--text-dim);
             width: 22px; height: 18px;
             font-size: 0.75rem; line-height: 1;
             padding: 0; margin: 0;
@@ -281,10 +285,63 @@
             border-color: var(--accent, #6c8);
         }
         .btn-reorder:disabled { opacity: 0.25; cursor: not-allowed; }
-        .playlist-track-info { flex: 1; }
-        .playlist-track-title { font-weight: 500; }
-        .playlist-track-artist { color: var(--text-dim); font-size: 0.85rem; }
-        .playlist-track-duration { color: var(--text-dim); font-size: 0.85rem; }
+
+        /* Score + Like/Dislike in Playlist-Track-Liste (kompakt, gleicher Look wie Such-Tab) */
+        .pl-track-rating { display: flex; align-items: center; gap: 6px; min-width: 140px; }
+        .pl-track-score { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 70px; }
+        .pl-track-score-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+        .pl-track-score-bar-fill { height: 100%; transition: width 0.3s ease; }
+        .pl-track-score-value { font-size: 0.75rem; font-weight: 600; min-width: 22px; text-align: right; }
+        .pl-track-rate { display: flex; gap: 2px; }
+        .pl-track-rate button {
+            background: transparent;
+            border: 1px solid var(--border, #444);
+            color: var(--text-dim);
+            width: 26px; height: 26px;
+            font-size: 0.85rem; line-height: 1;
+            padding: 0; margin: 0;
+            border-radius: 4px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .pl-track-rate button:hover { background: var(--bg-hover); color: var(--text); }
+        .pl-track-rate button.rated { opacity: 0.5; cursor: not-allowed; }
+        .pl-track-rate button.like:hover  { border-color: #2ecc71; color: #2ecc71; }
+        .pl-track-rate button.dislike:hover { border-color: #e74c3c; color: #e74c3c; }
+        @media (max-width: 768px) {
+            /* Auf Mobile: Score-Bar als eigene Zeile unter dem Track-Inhalt.
+               Playlist-Track-Grid wickelt; mobile-Bar belegt 100% der Breite. */
+            .playlist-track {
+                grid-template-columns: 24px 1fr 80px 30px 30px;
+                gap: 6px;
+                padding: 6px 10px;
+                font-size: 0.85rem;
+            }
+            .pl-track-score-mobile {
+                grid-column: 1 / -1;
+                order: 99;
+                height: 8px;
+                background: rgba(255,255,255,0.18);
+                border-radius: 4px;
+                overflow: hidden;
+                margin: 4px 0 6px 0;
+            }
+            .pl-track-score-mobile-fill {
+                height: 100%;
+                transition: width 0.3s ease;
+            }
+            .pl-track-rating {
+                gap: 3px;
+            }
+            .pl-track-score-bar { height: 4px; }
+            .pl-track-score-value { font-size: 0.7rem; min-width: 18px; }
+            .pl-track-rate button {
+                width: 22px; height: 22px; font-size: 0.75rem;
+            }
+        }
+        @media (min-width: 769px) {
+            .pl-track-score-mobile { display: none; }
+        }
 
         /* Sonos Controls */
         .sonos-panel {
@@ -524,11 +581,14 @@
             .header { padding: 12px 16px; }
             .main { padding: 12px 16px 80px; }
             .song-header, .song-row {
-                grid-template-columns: 30px 1fr 70px 60px;
+                grid-template-columns: 24px 1fr 80px 60px;
+                gap: 8px;
+                padding: 6px 10px;
+                font-size: 0.85rem;
             }
-            .song-album, .song-genre, .song-year { display: none; }
+            .song-score-bar { height: 4px; }
             .song-score-value { min-width: 18px; font-size: 0.7rem; }
-            .stats-bar { grid-template-columns: repeat(3, 1fr); }
+            .song-meta { font-size: 0.72rem; }
         }
 
         /* Now Playing Bar */
@@ -621,17 +681,17 @@
         .np-score {
             display: flex;
             align-items: center;
-            gap: 6px;
-            margin-top: 4px;
-            font-size: 0.75rem;
+            gap: 8px;
+            margin-top: 6px;
+            font-size: 0.8rem;
         }
         .np-score-label { color: var(--text-dim); }
-        .np-score-value { font-weight: 600; min-width: 22px; text-align: right; }
+        .np-score-value { font-weight: 600; min-width: 26px; text-align: right; }
         .np-score-bar {
-            width: 80px;
-            height: 6px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 3px;
+            width: 140px;
+            height: 8px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 4px;
             overflow: hidden;
         }
         .np-score-bar-fill {
@@ -729,14 +789,8 @@
 <!-- Main Content -->
 <div class="main">
 
-    <!-- Stats -->
-    <div class="stats-bar" id="stats-bar"></div>
-
     <!-- Tab: Browse -->
     <div id="tab-browse">
-        <!-- Genre Quick-Filter -->
-        <div class="genre-tags" id="genre-tags"></div>
-
         <!-- Filter Bar -->
         <div class="filter-bar">
             <input type="text" class="search-input" id="search-input" placeholder="🎤 Suche Künstler, Titel, Album..." oninput="debounceSearch()">
@@ -759,14 +813,10 @@
 
         <!-- Song List -->
         <div class="song-header" id="song-header">
-            <div class="song-h-cell sortable" data-sort-key="id">#</div>
-            <div class="song-h-cell sortable" data-sort-key="title">Titel</div>
-            <div class="song-h-cell sortable" data-sort-key="artist">Künstler</div>
-            <div class="song-h-cell sortable" data-sort-key="album">Album</div>
-            <div class="song-h-cell sortable" data-sort-key="genre">Genre</div>
-            <div class="song-h-cell sortable" data-sort-key="year">Jahr</div>
+            <div class="song-h-cell h-num sortable" data-sort-key="id">#</div>
+            <div class="song-h-cell sortable" data-sort-key="title">Titel · Künstler · Album · Genre · Jahr</div>
             <div class="song-h-cell sortable" data-sort-key="score">Score</div>
-            <div class="song-h-cell"></div>
+            <div class="song-h-cell h-actions">Aktion</div>
         </div>
         <div class="song-grid" id="song-list"></div>
 
@@ -830,6 +880,7 @@
     </div>
     <div class="np-controls">
         <button class="btn btn-sm btn-secondary" id="np-pause-btn" onclick="sonosPause()">⏸ Pause</button>
+        <button class="btn btn-sm btn-secondary" onclick="sonosNext()" title="Nächster Track">⏭ Next</button>
         <button class="btn btn-sm btn-secondary" onclick="sonosStop()">⏹ Stop</button>
         <button class="btn btn-sm btn-like" id="np-like-btn" onclick="sendPlayEvent('like')" title="Like (stark positiv)">👍</button>
         <button class="btn btn-sm btn-dislike" id="np-dislike-btn" onclick="sendPlayEvent('dislike')" title="Dislike (stark negativ)">👎</button>
@@ -1020,23 +1071,14 @@ function showTab(tab, btn) {
 // === Stats ===
 async function loadStats() {
     const stats = await apiGet('/api/stats');
-    document.getElementById('stats-bar').innerHTML = `
-        <div class="stat-card"><div class="stat-value">${stats.total_songs.toLocaleString('de')}</div><div class="stat-label">Songs</div></div>
-        <div class="stat-card"><div class="stat-value">${stats.with_artist.toLocaleString('de')}</div><div class="stat-label">mit Künstler</div></div>
-        <div class="stat-card"><div class="stat-value">${stats.with_genre.toLocaleString('de')}</div><div class="stat-label">mit Genre</div></div>
-        <div class="stat-card"><div class="stat-value">${stats.with_album.toLocaleString('de')}</div><div class="stat-label">mit Album</div></div>
-        <div class="stat-card"><div class="stat-value">${stats.with_year.toLocaleString('de')}</div><div class="stat-label">mit Jahr</div></div>
-    `;
-    // Genre tags (top 15)
-    const top = stats.genres.slice(0, 15);
-    document.getElementById('genre-tags').innerHTML = top.map(g =>
-        `<span class="genre-tag" onclick="filterGenre('${g.genre.replace(/'/g, "\\'")}')">${g.genre} (${g.count})</span>`
-    ).join('');
-    // Genre dropdown
+    // Logo-Song-Count mit der echten Zahl synchronisieren
+    document.getElementById('logo-song-count').textContent =
+        `${stats.total_songs.toLocaleString('de')} Songs`;
+    // Genre-Dropdown (Quick-Filter Tags sind weg, aber Dropdown bleibt)
     const sel = document.getElementById('filter-genre');
     sel.innerHTML = '<option value="">Alle Genres</option>' +
         stats.genres.map(g => `<option value="${g.genre}">${g.genre} (${g.count})</option>`).join('');
-    // Year dropdown
+    // Year-Dropdown
     const ysel = document.getElementById('filter-year');
     ysel.innerHTML = '<option value="">Alle Jahre</option>' +
         stats.years.map(y => `<option value="${y.year}">${y.year} (${y.count})</option>`).join('');
@@ -1234,14 +1276,19 @@ function renderSongs(songs) {
         const sc = s.score != null ? s.score : 50;
         // Farbe: rot<40, gelb 40-60, grün>60
         const scColor = sc < 40 ? '#e74c3c' : (sc < 60 ? '#f1c40f' : '#2ecc71');
+        // Sub-Info: Artist · Album · Genre · Year (kompakt, gedimmt)
+        const metaParts = [esc(s.artist || '—')];
+        if (s.album) metaParts.push(esc(s.album));
+        if (s.genre) metaParts.push(esc(s.genre));
+        if (s.year) metaParts.push(esc(String(s.year)));
+        const meta = metaParts.join('<span class="sep">·</span>');
         return `
         <div class="song-row" data-id="${s.id}">
             <div class="song-num">${currentPage * PAGE_SIZE + i + 1}</div>
-            <div class="song-title" title="${esc(s.title)}">${esc(s.title)}</div>
-            <div class="song-artist">${esc(s.artist)}</div>
-            <div class="song-album">${esc(s.album)}</div>
-            <div class="song-genre">${esc(s.genre)}</div>
-            <div class="song-year">${s.year || ''}</div>
+            <div class="song-info">
+                <div class="song-title" title="${esc(s.title)}">${esc(s.title)}</div>
+                <div class="song-meta">${meta}</div>
+            </div>
             <div class="song-score" title="Ranking-Score (höher = besser)">
                 <div class="song-score-bar"><div class="song-score-bar-fill" style="width:${sc}%;background:${scColor};"></div></div>
                 <span class="song-score-value" style="color:${scColor};">${Math.round(sc)}</span>
@@ -1251,8 +1298,7 @@ function renderSongs(songs) {
                 <button class="play-btn" onclick="addToCurrentPlayingPlaylist(${s.id})" title="Zur aktuell laufenden Playlist" style="background:var(--bg-hover);font-size:0.7rem;">+</button>
             </div>
         </div>
-    `;
-    }).join('');
+    `}).join('');
 
     // Pagination
     const pg = document.getElementById('pagination');
@@ -1381,13 +1427,39 @@ function _updateAllPlayButtons() {
 
 // Queue-Hint rechts vom Pause-Button: zeigt "+N Weitere Lieder"
 // wenn die Sonos-Queue noch kommende Songs hat.
+//
+// Strategie: nutzt den Speaker aus der Now-Playing-Bar (np-speaker) statt
+// den Backend-Cache (_sonos_playing), weil der Cache bei Live-Polling
+// manchmal leer ist obwohl grad ein Song spielt (z.B. direkt nach Next).
 async function _updateQueueHint(speaker) {
     const el = document.getElementById('np-queue-hint');
     if (!el) return;
-    // Optional: speaker-Argument kann die Anzeige beschleunigen (Fallback sonst null)
+    // Speaker aus Now-Playing-Bar holen, falls nicht übergeben
+    if (!speaker) {
+        const npEl = document.getElementById('np-speaker');
+        speaker = npEl?.dataset?.speaker || null;
+    }
+    if (!speaker) {
+        // Versuch's mit dem Cache-Endpoint als Fallback
+        try {
+            const r = await apiGet('/api/sonos/now-playing-active');
+            if (r.speaker && r.queue_remaining > 0) {
+                el.textContent = `+${r.queue_remaining} ${r.queue_remaining === 1 ? 'Lied' : 'Lieder'}`;
+                el.title = `${r.queue_remaining} weitere${r.queue_remaining === 1 ? 's' : ''} Lied in der Warteschlange auf ${r.speaker}`;
+                el.classList.remove('hidden');
+            } else {
+                el.textContent = '';
+                el.classList.add('hidden');
+            }
+        } catch (e) {
+            el.classList.add('hidden');
+        }
+        return;
+    }
+    // Direkter Queue-Check auf dem Speaker
     try {
-        const r = await apiGet('/api/sonos/now-playing-active');
-        if (r.speaker && r.queue_remaining > 0) {
+        const r = await apiGet(`/api/sonos/queue-info?speaker=${encodeURIComponent(speaker)}`);
+        if (r.queue_remaining > 0) {
             el.textContent = `+${r.queue_remaining} ${r.queue_remaining === 1 ? 'Lied' : 'Lieder'}`;
             el.title = `${r.queue_remaining} weitere${r.queue_remaining === 1 ? 's' : ''} Lied in der Warteschlange auf ${r.speaker}`;
             el.classList.remove('hidden');
@@ -1509,6 +1581,37 @@ async function sonosStop() {
         setTimeout(() => {
             if (typeof loadSpeakers === 'function') loadSpeakers();
         }, 500);
+    } catch (e) { toast(e.message, true); }
+}
+
+async function sonosNext() {
+    // Speaker bestimmen — gleiche Logik wie sonosStop()
+    let speaker = arguments[0];
+    if (!speaker) {
+        const npEl = document.getElementById('np-speaker');
+        speaker = npEl?.dataset?.speaker
+            || (npEl?.textContent || '').replace(/^🔊\s*/, '').trim()
+            || document.getElementById('radio-speaker')?.value
+            || 'Küche';
+    }
+    if (!speaker || speaker === 'undefined') speaker = 'Küche';
+    try {
+        const r = await apiPost('/api/sonos/next', { speaker });
+        if (r.status === 'no_queue') {
+            // Stilles Toast — kein Error, einfach nichts in der Queue
+            toast(`⏭ ${speaker}: keine weiteren Lieder in der Queue`);
+        } else {
+            // Score für aktuellen Song (den wir verlassen) als Skip-Event senden
+            // — so fließt der "Skip" ins Ranking ein.
+            try {
+                if (_npLastState && _npLastState.songId && _npLastState.relPct != null) {
+                    await apiPost(`/api/songs/${_npLastState.songId}/play-event`, {
+                        event: `rel_pct:${_npLastState.relPct.toFixed(3)}`,
+                    });
+                }
+            } catch (_) { /* Ranking-Fehler dürfen Next nicht blocken */ }
+            // Polling aktualisiert den Now-Playing-Bar in 1-5s von selbst
+        }
     } catch (e) { toast(e.message, true); }
 }
 
@@ -1946,29 +2049,81 @@ async function loadPlaylistTracks(id) {
         el.innerHTML = data.tracks.map((t, idx) => {
             const isFirst = idx === 0;
             const isLast = idx === total - 1;
+            // Score-Berechnung: gleiche Farblogik wie im Such-Tab (rot/gelb/grün)
+            const sc = t.score != null ? t.score : 50;
+            const scColor = sc < 40 ? '#e74c3c' : (sc < 60 ? '#f1c40f' : '#2ecc71');
+            // Sub-Info: Artist · Genre (kompakt, gedimmt — wie im Such-Tab)
+            const metaParts = [esc(t.artist || '—')];
+            if (t.genre) metaParts.push(esc(t.genre));
+            const meta = metaParts.join('<span class="sep">·</span>');
             return `
             <div class="playlist-track" data-song-id="${t.id}">
-                <div class="playlist-track-num">${t.position}.</div>
-                <div class="playlist-track-reorder">
-                    <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'up')"
-                        ${isFirst ? 'disabled title="Bereits oben"' : 'title="Nach oben"'}
-                        aria-label="Nach oben">↑</button>
-                    <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'down')"
-                        ${isLast ? 'disabled title="Bereits unten"' : 'title="Nach unten"'}
-                        aria-label="Nach unten">↓</button>
+                <div class="pl-track-score-mobile" title="Ranking-Score: ${Math.round(sc)}"><div class="pl-track-score-mobile-fill" data-score-fill-mobile="${t.id}" style="width:${sc}%;background:${scColor};"></div></div>
+                <div class="playlist-track-num-wrap">
+                    <div class="playlist-track-num">${t.position}.</div>
+                    <div class="playlist-track-reorder">
+                        <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'up')"
+                            ${isFirst ? 'disabled title="Bereits oben"' : 'title="Nach oben"'}
+                            aria-label="Nach oben">↑</button>
+                        <button class="btn-reorder" onclick="reorderTrack(${id}, ${t.id}, 'down')"
+                            ${isLast ? 'disabled title="Bereits unten"' : 'title="Nach unten"'}
+                            aria-label="Nach unten">↓</button>
+                    </div>
                 </div>
-                <div class="playlist-track-info">
-                    <div class="playlist-track-title">${esc(t.title)}</div>
-                    <div class="playlist-track-artist">${esc(t.artist)} ${t.genre ? '· ' + esc(t.genre) : ''}</div>
+                <div class="song-info">
+                    <div class="playlist-track-title" title="${esc(t.title)}">${esc(t.title)}</div>
+                    <div class="song-meta">${meta}</div>
                 </div>
-                <div class="playlist-track-duration">${t.duration_sec ? formatDuration(t.duration_sec) : ''}</div>
+                <div class="pl-track-rating">
+                    <div class="pl-track-score" title="Ranking-Score (höher = besser)">
+                        <div class="pl-track-score-bar"><div class="pl-track-score-bar-fill" data-score-fill="${t.id}" style="width:${sc}%;background:${scColor};"></div></div>
+                        <span class="pl-track-score-value" data-score-val="${t.id}" style="color:${scColor};">${Math.round(sc)}</span>
+                    </div>
+                    <div class="pl-track-rate">
+                        <button class="like" onclick="_ratePlaylistTrack(${id}, ${t.id}, 'like', this)" title="Like (stark positiv)">👍</button>
+                        <button class="dislike" onclick="_ratePlaylistTrack(${id}, ${t.id}, 'dislike', this)" title="Dislike (stark negativ)">👎</button>
+                    </div>
+                </div>
                 <button class="btn btn-sm btn-secondary" onclick="playFromPlaylist('${esc(data.name)}', ${t.id}, '${esc(t.title)}', '${esc(t.artist)}')" title="Playlist ab diesem Lied abspielen">▶</button>
-                <button class="btn btn-sm btn-danger" onclick="removeTrack(${id}, ${t.id}, ${hasM3u})">✕</button>
+                <button class="btn btn-sm btn-danger" onclick="removeTrack(${id}, ${t.id}, ${hasM3u})" title="Aus Playlist entfernen">✕</button>
             </div>
-        `;}).join('');
+        `}).join('');
     } catch (e) {
         console.error('loadPlaylistTracks failed', e);
         el.innerHTML = `<div style="color:var(--danger,#e55);padding:8px 0;">⚠️ Fehler beim Laden: ${esc(e.message || String(e))}</div>`;
+    }
+}
+
+async function _ratePlaylistTrack(playlistId, songId, event, btn) {
+    // Like/Dislike direkt am Playlist-Track. Schickt POST /api/songs/{id}/play-event
+    // und updated den Score-Balken lokal mit der Server-Antwort.
+    // (playlistId ist im Moment nur für ein evtl. späteres "alle Bewertungen resetten"
+    //  interessant — wir behalten das Argument für API-Stabilität.)
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const oldEmoji = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const r = await apiPost(`/api/songs/${songId}/play-event`, { event });
+        // Score-Bar in der gleichen Zeile aktualisieren
+        const trackEl = btn.closest('.playlist-track');
+        if (trackEl && r.score != null) {
+            const sc = r.score;
+            const scColor = sc < 40 ? '#e74c3c' : (sc < 60 ? '#f1c40f' : '#2ecc71');
+            const fill = trackEl.querySelector(`[data-score-fill="${songId}"]`);
+            const val = trackEl.querySelector(`[data-score-val="${songId}"]`);
+            const fillMobile = trackEl.querySelector(`[data-score-fill-mobile="${songId}"]`);
+            if (fill) { fill.style.width = `${sc}%`; fill.style.background = scColor; }
+            if (val)  { val.textContent = Math.round(sc); val.style.color = scColor; }
+            if (fillMobile) { fillMobile.style.width = `${sc}%`; fillMobile.style.background = scColor; }
+        }
+        // Kurzes visuelles Feedback
+        btn.textContent = event === 'like' ? '✅' : '🚫';
+        setTimeout(() => { btn.textContent = oldEmoji; btn.disabled = false; }, 600);
+    } catch (e) {
+        btn.textContent = oldEmoji;
+        btn.disabled = false;
+        if (typeof toast === 'function') toast(`Bewertung fehlgeschlagen: ${e.message || e}`, true);
     }
 }
 
