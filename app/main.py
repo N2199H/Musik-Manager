@@ -14,9 +14,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 import http.server
 import socketserver
+import logging
 
 from datetime import datetime
 from .database import SessionLocal, Song, Playlist, PlaylistTrack, engine, init_db
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(
     title="🎵 Musik-Manager API",
@@ -338,6 +341,23 @@ def record_play_event(song_id: int, req: PlayEventRequest, db: Session = Depends
         song.score = new_score
         db.commit()
         db.refresh(song)
+
+        # ID3-Tag-Sync: schreibe Score + Song-ID + POPM in die MP3.
+        # DB bleibt Source of Truth — Fehler hier blockieren die Response
+        # NICHT, der User soll sein Rating sehen können auch wenn die MP3
+        # nicht erreichbar/kaputt ist.
+        try:
+            from .id3_sync import write_score_to_mp3
+            ok, msg = write_score_to_mp3(song.filepath, song_id, new_score)
+            if not ok:
+                log.warning("ID3-Sync fehlgeschlagen für song_id=%d: %s",
+                            song_id, msg)
+        except Exception as e:
+            # Letzter Fangschirm — write_score_to_mp3 fängt schon viel ab,
+            # aber Import-Fehler oder kaputte mutagen-Internals sollen den
+            # Rating-Flow nicht killen.
+            log.warning("ID3-Sync Exception für song_id=%d: %s",
+                        song_id, e)
 
     return {
         "song_id": song_id,
