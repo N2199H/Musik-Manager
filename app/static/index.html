@@ -447,7 +447,9 @@
             z-index: 2000;
             animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
         }
-        .toast.error { background: var(--red); }
+        .toast.toast-error   { background: var(--red); }
+        .toast.toast-success { background: var(--green); }
+        .toast.toast-info    { background: var(--text-dim); }
         @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
         @keyframes fadeOut { to { opacity: 0; } }
 
@@ -562,6 +564,17 @@
             margin-bottom: 6px;
             min-height: 1.2em;
         }
+        .settings-job-result {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--green);
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+        .settings-job-result b { color: var(--green); }
         .settings-log {
             font-family: monospace;
             font-size: 0.72rem;
@@ -953,6 +966,8 @@
                 <div class="settings-progress-fill" id="settings-progress-fill" style="width:0%"></div>
             </div>
             <div class="settings-job-message" id="settings-job-message"></div>
+            <!-- Result-Box: nur sichtbar wenn Job done/failed/stopped -->
+            <div id="settings-job-result" class="settings-job-result hidden"></div>
             <div class="settings-log" id="settings-log"></div>
             <div class="modal-actions" style="margin-top:12px;">
                 <button class="btn btn-danger" id="settings-stop-btn" onclick="stopSettingsJob()">⏹ Stop</button>
@@ -1048,12 +1063,23 @@ async function apiDelete(path) {
 }
 
 // === Toast ===
-function toast(msg, isError = false) {
+// level: 'info' (default) | 'success' | 'error'
+// duration: ms bis auto-remove (default 3000). 0 = bis zum Klick.
+function toast(msg, isError = false, duration = 3000) {
+    // Backward-compat: alter Aufruf mit bool als 2. Argument → error
     const el = document.createElement('div');
-    el.className = 'toast' + (isError ? ' error' : '');
+    let level = 'info';
+    if (isError === true) level = 'error';
+    el.className = 'toast toast-' + level;
     el.textContent = msg;
+    if (duration > 0) {
+        setTimeout(() => el.remove(), duration);
+    } else {
+        el.style.cursor = 'pointer';
+        el.title = 'Klicken zum Schließen';
+        el.addEventListener('click', () => el.remove());
+    }
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
 }
 
 // === Tabs ===
@@ -2382,6 +2408,11 @@ function formatDuration(sec) {
 
 // === Settings: Scan + Enrichment (Background-Jobs) ===
 let _settingsJobPollTimer = null;
+// Track which job-results we've already announced, so the "X neue Songs"
+// toast fires exactly once per job — and the polling keeps going until
+// we've shown the result (so the user gets feedback even if they close
+// the modal immediately after starting a scan).
+let _settingsLastAnnouncedResult = null;
 
 function openSettings() {
     // Beim Öffnen: aktuellen Job-Status holen
@@ -2393,12 +2424,14 @@ function openSettings() {
 function ensureSettingsPolling() {
     if (_settingsJobPollTimer) return;
     // Polling läuft, solange ein Job aktiv ist ODER das Modal offen ist
+    // ODER wir noch ein unangekündigtes Result haben.
     _settingsJobPollTimer = setInterval(async () => {
         await refreshSettingsStatus();
         // Beim nächsten Tick prüfen, ob wir noch pollen müssen
         const dotVisible = !document.getElementById('settings-job-dot').classList.contains('hidden');
         const modalOpen = !document.getElementById('modal-settings').classList.contains('hidden');
-        if (!dotVisible && !modalOpen) {
+        const pendingResult = _settingsLastAnnouncedResult === null;
+        if (!dotVisible && !modalOpen && !pendingResult) {
             clearInterval(_settingsJobPollTimer);
             _settingsJobPollTimer = null;
         }
@@ -2418,14 +2451,19 @@ async function refreshSettingsStatus() {
         } else {
             dot.classList.add('hidden');
         }
-        // Wenn Modal zu UND kein laufender Job, können wir Polling stoppen
-        if (!modalOpen && (!job || job.status !== 'running')) {
-            if (_settingsJobPollTimer) {
-                clearInterval(_settingsJobPollTimer);
-                _settingsJobPollTimer = null;
-            }
-            return;
+
+        // Fertig-Meldung: sobald ein Job "done" oder "failed" oder "stopped"
+        // ist UND wir das Result noch nicht angekündigt haben → Toast
+        // (auch wenn das Modal zu ist — Polling läuft ja deshalb weiter).
+        if (job && ['done', 'failed', 'stopped'].includes(job.status)
+            && _settingsLastAnnouncedResult !== job.started_at) {
+            _settingsLastAnnouncedResult = job.started_at;
+            announceJobResult(job);
         }
+
+        // Wenn Modal zu UND kein laufender Job UND keine offene Anzeige,
+        // könnten wir Polling stoppen — die ensureSettingsPolling-Schleife
+        // macht das selbst.
         if (!modalOpen) return;
 
         const panel = document.getElementById('settings-job-panel');
@@ -2452,12 +2490,84 @@ async function refreshSettingsStatus() {
         } else {
             log.innerHTML = '<div class="log-empty">Noch keine Log-Zeilen…</div>';
         }
+        // Result-Box: nur sichtbar bei done/failed/stopped
+        const resultBox = document.getElementById('settings-job-result');
+        if (job.result && ['done', 'failed', 'stopped'].includes(job.status)) {
+            resultBox.innerHTML = renderJobResult(job);
+            resultBox.classList.remove('hidden');
+        } else {
+            resultBox.classList.add('hidden');
+        }
         // Stop-Button nur zeigen wenn running
         document.getElementById('settings-stop-btn').style.display =
             (job.status === 'running') ? '' : 'none';
     } catch (e) {
         // still ok, nur log
         console.warn('refreshSettingsStatus:', e);
+    }
+}
+
+function renderJobResult(job) {
+    // Scan-Result: inserted / updated / skipped / errors / scanned
+    // Enrich-Result: erfolgreich / fehler / übersprungen
+    const r = job.result || {};
+    const name = job.name;
+    if (name === 'scan') {
+        const inserted = r.inserted || 0;
+        const updated = r.updated || 0;
+        const skipped = r.skipped || 0;
+        const errors = r.errors || 0;
+        const scanned = r.scanned || 0;
+        const stopped = r.stopped;
+        const parts = [];
+        if (inserted) parts.push(`<b>${inserted}</b> neue`);
+        if (updated)  parts.push(`<b>${updated}</b> aktualisiert`);
+        if (skipped && !inserted && !updated) parts.push(`<b>${skipped}</b> unverändert`);
+        if (errors)   parts.push(`<b style="color:var(--red)">${errors}</b> Fehler`);
+        if (stopped)  parts.push(`<i>abgebrochen</i>`);
+        const summary = parts.length
+            ? parts.join(' · ')
+            : `<i>${scanned} Dateien geprüft, keine Änderungen</i>`;
+        return `📊 ${summary}`;
+    }
+    if (name === 'enrich') {
+        return `📊 <b>${r.processed || 0}</b> verarbeitet, <b>${r.errors || 0}</b> Fehler`;
+    }
+    return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
+}
+
+function announceJobResult(job) {
+    // Toast (auch sichtbar wenn Modal zu) — exakt einmal pro Job.
+    if (job.status === 'failed') {
+        toast(`${job.name} fehlgeschlagen: ${job.error || '?'}`, true, 6000);
+        return;
+    }
+    if (job.status === 'stopped') {
+        toast(`${job.name} abgebrochen`, false, 4000);
+        return;
+    }
+    if (job.name === 'scan' && job.result) {
+        const r = job.result;
+        const inserted = r.inserted || 0;
+        const updated = r.updated || 0;
+        const errors = r.errors || 0;
+        if (inserted > 0) {
+            toast(`📁 ${inserted} neue Songs hinzugefügt` +
+                  (updated ? `, ${updated} aktualisiert` : '') +
+                  (errors ? `, ${errors} Fehler` : ''),
+                  false, 6000);
+        } else if (updated > 0) {
+            toast(`📁 ${updated} Songs aktualisiert (keine neuen)`, false, 5000);
+        } else {
+            toast(`📁 Bibliothek aktuell — keine neuen Songs`, false, 4000);
+        }
+        return;
+    }
+    if (job.name === 'enrich' && job.result) {
+        const r = job.result;
+        toast(`🎵 Enrichment fertig: ${r.processed || 0} verarbeitet`,
+              false, 5000);
+        return;
     }
 }
 
@@ -2478,17 +2588,17 @@ async function startScan() {
     try {
         const r = await apiPost('/api/scan/start', { force_rescan: force });
         if (r.status === 'started') {
-            showToast(r.job.name + ' gestartet');
+            toast(force ? '🔄 Rescan gestartet…' : '🔍 Suche neue Songs…', false, 3000);
             ensureSettingsPolling();  // Polling anwerfen, falls zu
             await refreshSettingsStatus();
         } else {
-            showToast('Unerwartete Antwort: ' + JSON.stringify(r), 'error');
+            toast('Unerwartete Antwort: ' + JSON.stringify(r), true, 5000);
         }
     } catch (e) {
         if (e.message && e.message.includes('409')) {
-            showToast('Es läuft bereits ein Job', 'error');
+            toast('Es läuft bereits ein Job', true, 4000);
         } else {
-            showToast('Fehler: ' + e.message, 'error');
+            toast('Fehler: ' + e.message, true, 5000);
         }
     } finally {
         btn.disabled = false;
@@ -2505,19 +2615,19 @@ async function startEnrich() {
     try {
         const r = await apiPost('/api/enrich/start', { mode: mode });
         if (r.status === 'started') {
-            showToast(r.job.name + ' gestartet');
+            toast(`🎵 Enrichment gestartet (${mode})…`, false, 3000);
             ensureSettingsPolling();  // Polling anwerfen, falls zu
             await refreshSettingsStatus();
         } else {
-            showToast('Unerwartete Antwort: ' + JSON.stringify(r), 'error');
+            toast('Unerwartete Antwort: ' + JSON.stringify(r), true, 5000);
         }
     } catch (e) {
         if (e.message && e.message.includes('409')) {
-            showToast('Es läuft bereits ein Job', 'error');
+            toast('Es läuft bereits ein Job', true, 4000);
         } else if (e.message && e.message.includes('400')) {
-            showToast('Ungültiger Modus: ' + mode, 'error');
+            toast('Ungültiger Modus: ' + mode, true, 4000);
         } else {
-            showToast('Fehler: ' + e.message, 'error');
+            toast('Fehler: ' + e.message, true, 5000);
         }
     } finally {
         btn.disabled = false;
@@ -2531,13 +2641,13 @@ async function stopSettingsJob() {
     btn.textContent = '⏳ Stop...';
     try {
         await apiPost('/api/jobs/stop', null);
-        showToast('Stop angefordert');
+        toast('Stop angefordert', false, 3000);
         await refreshSettingsStatus();
     } catch (e) {
         if (e.message && e.message.includes('404')) {
-            showToast('Kein laufender Job', 'error');
+            toast('Kein laufender Job', true, 4000);
         } else {
-            showToast('Fehler: ' + e.message, 'error');
+            toast('Fehler: ' + e.message, true, 5000);
         }
     } finally {
         btn.disabled = false;
