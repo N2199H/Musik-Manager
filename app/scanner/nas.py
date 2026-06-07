@@ -75,7 +75,8 @@ def extract_tags(filepath: str) -> dict:
 
     Liefert ein Dict mit Schlüsseln: filepath, filename, artist, title,
     album, genre, year, duration_sec, bitrate_kbps, filesize.
-    Fehlende Felder werden als leerer String bzw. 0 zurückgegeben.
+    Plus 'mm_song_id': Integer aus TXXX:MUSIK_MANAGER_SONG_ID (oder None)
+    wenn vorhanden — wird vom Scanner für Rename/Move-Detection genutzt.
     """
     info: dict = {
         "filepath": filepath,
@@ -88,6 +89,7 @@ def extract_tags(filepath: str) -> dict:
         "duration_sec": 0,
         "bitrate_kbps": 0,
         "filesize": 0,
+        "mm_song_id": None,  # TXXX:MUSIK_MANAGER_SONG_ID wenn vorhanden
     }
     try:
         info["filesize"] = os.path.getsize(filepath)
@@ -123,6 +125,16 @@ def extract_tags(filepath: str) -> dict:
             for src_key in ("TDRC", "TYER"):
                 if src_key in tags and not info["year"]:
                     info["year"] = str(tags[src_key])
+            # Unsere eigene TXXX:MUSIK_MANAGER_SONG_ID — wird für
+            # Rename/Move-Detection in run_scan() gebraucht.
+            # Erst Schnell-Pfad: tags.get("TXXX:DESC") ist O(1) per Hash,
+            # getall("TXXX") würde alle TXXX-Frames linear durchgehen.
+            try:
+                t = tags.get("TXXX:MUSIK_MANAGER_SONG_ID")
+                if t and t.text:
+                    info["mm_song_id"] = int(str(t.text[0]))
+            except (AttributeError, ValueError, TypeError):
+                pass
             # FLAC / Vorbis – case-insensitive
             for k, v in tags.items():
                 k_lower = k.lower()
@@ -186,7 +198,9 @@ def run_scan(
             abgebrochen werden soll (z.B. UI-Stop-Button).
 
     Returns:
-        Dict mit Statistik: scanned, inserted, updated, skipped, errors, stopped.
+        Dict mit Statistik: scanned, inserted, updated, skipped, errors,
+        stopped, renamed (neue Kategorie — Datei hatte ID3-Song-ID, Pfad
+        wurde in der DB aktualisiert).
     """
     music_dir = Path(music_dir)
     db_path = Path(db_path)
@@ -201,22 +215,77 @@ def run_scan(
         if on_progress:
             on_progress(0, len(files), f"{existing} Songs vorhanden, {len(files)} Dateien gefunden")
 
-        stats = {"scanned": 0, "inserted": 0, "updated": 0, "skipped": 0, "errors": 0, "stopped": False}
+        stats = {
+            "scanned": 0, "inserted": 0, "updated": 0, "skipped": 0,
+            "renamed": 0, "errors": 0, "stopped": False,
+        }
         for i, filepath in enumerate(files):
             if should_stop and should_stop():
                 stats["stopped"] = True
                 break
-            if not force_rescan:
-                cur.execute("SELECT id FROM songs WHERE filepath = ?", (filepath,))
-                if cur.fetchone():
-                    stats["skipped"] += 1
-                    continue
             try:
+                # Tags lesen — beinhaltet mm_song_id aus TXXX
                 song_info = extract_tags(filepath)
-                # INSERT OR REPLACE -> wir zählen inserted/updated über rowcount
+
+                # 1) Rename/Move-Detection: Hat die Datei eine
+                #    MUSIK_MANAGER_SONG_ID, die wir kennen? Wenn ja, ist
+                #    sie vermutlich umbenannt/verschoben worden. Wir
+                #    schauen in der DB nach dieser ID:
+                #    - existiert mit ANDEREM Pfad → Pfad-Update
+                #    - existiert mit GLEICHEM Pfad → Skip (nichts tun)
+                #    - existiert NICHT → normal als Insert weiter
+                mm_id = song_info.get("mm_song_id")
+                if mm_id is not None:
+                    cur.execute(
+                        "SELECT id, filepath FROM songs WHERE id = ?", (mm_id,)
+                    )
+                    row = cur.fetchone()
+                    if row is not None:
+                        old_id, old_path = row
+                        if old_path != filepath:
+                            # Pfad-Update: nur filepath + filename aktualisieren
+                            # (Rest der Tags bleibt — sind ja identisch, ist
+                            # nur eine Pfad-Mutation)
+                            conn.execute(
+                                "UPDATE songs SET filepath = ?, filename = ? "
+                                "WHERE id = ?",
+                                (filepath, os.path.basename(filepath), old_id),
+                            )
+                            stats["renamed"] += 1
+                            stats["scanned"] += 1
+                            if (i + 1) % 50 == 0 and on_progress:
+                                on_progress(i + 1, len(files),
+                                            f"{i+1}/{len(files)} verarbeitet "
+                                            f"(umbenannt: {stats['renamed']})")
+                            continue
+                        else:
+                            # ID + Pfad identisch — nichts zu tun
+                            stats["skipped"] += 1
+                            stats["scanned"] += 1
+                            if (i + 1) % 50 == 0 and on_progress:
+                                on_progress(i + 1, len(files),
+                                            f"{i+1}/{len(files)} verarbeitet")
+                            continue
+                    # else: ID nicht in DB — vermutlich alte DB oder
+                    # kaputter Tag. Fallthrough zum normalen Insert.
+
+                # 2) Normaler Pfad: existiert der filepath schon?
+                if not force_rescan:
+                    cur.execute("SELECT id FROM songs WHERE filepath = ?",
+                                (filepath,))
+                    if cur.fetchone():
+                        stats["skipped"] += 1
+                        stats["scanned"] += 1
+                        if (i + 1) % 50 == 0 and on_progress:
+                            on_progress(i + 1, len(files),
+                                        f"{i+1}/{len(files)} verarbeitet")
+                        continue
+
+                # 3) Insert (oder Update bei force_rescan)
                 cur2 = conn.cursor()
                 if force_rescan:
-                    cur2.execute("SELECT id FROM songs WHERE filepath = ?", (filepath,))
+                    cur2.execute("SELECT id FROM songs WHERE filepath = ?",
+                                 (filepath,))
                     already = cur2.fetchone()
                 else:
                     already = None
@@ -227,12 +296,14 @@ def run_scan(
                         stats["inserted"] += 1
                 else:
                     stats["errors"] += 1
+                stats["scanned"] += 1
             except Exception as e:
                 stats["errors"] += 1
+                stats["scanned"] += 1
                 print(f"  ⚠ Fehler bei {filepath}: {e}", file=sys.stderr)
-            stats["scanned"] += 1
             if (i + 1) % 50 == 0 and on_progress:
-                on_progress(i + 1, len(files), f"{i+1}/{len(files)} verarbeitet")
+                on_progress(i + 1, len(files),
+                            f"{i+1}/{len(files)} verarbeitet")
         conn.commit()
         if on_progress:
             on_progress(len(files), len(files), "Scan abgeschlossen")

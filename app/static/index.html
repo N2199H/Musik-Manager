@@ -2508,21 +2508,23 @@ async function refreshSettingsStatus() {
 }
 
 function renderJobResult(job) {
-    // Scan-Result: inserted / updated / skipped / errors / scanned
+    // Scan-Result: inserted / updated / skipped / renamed / errors / scanned
     // Enrich-Result: erfolgreich / fehler / übersprungen
     const r = job.result || {};
     const name = job.name;
     if (name === 'scan') {
         const inserted = r.inserted || 0;
         const updated = r.updated || 0;
+        const renamed = r.renamed || 0;
         const skipped = r.skipped || 0;
         const errors = r.errors || 0;
         const scanned = r.scanned || 0;
         const stopped = r.stopped;
         const parts = [];
         if (inserted) parts.push(`<b>${inserted}</b> neue`);
+        if (renamed)  parts.push(`<b>${renamed}</b> umbenannt/verschoben`);
         if (updated)  parts.push(`<b>${updated}</b> aktualisiert`);
-        if (skipped && !inserted && !updated) parts.push(`<b>${skipped}</b> unverändert`);
+        if (skipped && !inserted && !updated && !renamed) parts.push(`<b>${skipped}</b> unverändert`);
         if (errors)   parts.push(`<b style="color:var(--red)">${errors}</b> Fehler`);
         if (stopped)  parts.push(`<i>abgebrochen</i>`);
         const summary = parts.length
@@ -2550,12 +2552,15 @@ function announceJobResult(job) {
         const r = job.result;
         const inserted = r.inserted || 0;
         const updated = r.updated || 0;
+        const renamed = r.renamed || 0;
         const errors = r.errors || 0;
-        if (inserted > 0) {
-            toast(`📁 ${inserted} neue Songs hinzugefügt` +
-                  (updated ? `, ${updated} aktualisiert` : '') +
-                  (errors ? `, ${errors} Fehler` : ''),
-                  false, 6000);
+        if (inserted > 0 || renamed > 0) {
+            const parts = [];
+            if (inserted) parts.push(`${inserted} neue`);
+            if (renamed)  parts.push(`${renamed} umbenannt`);
+            if (updated)  parts.push(`${updated} aktualisiert`);
+            if (errors)   parts.push(`${errors} Fehler`);
+            toast(`📁 ${parts.join(', ')}`, false, 6000);
         } else if (updated > 0) {
             toast(`📁 ${updated} Songs aktualisiert (keine neuen)`, false, 5000);
         } else {
