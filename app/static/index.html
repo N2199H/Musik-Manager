@@ -991,6 +991,31 @@
             </div>
         </div>
 
+        <!-- Sektion: ID3-Tags zurückschreiben (Bidirektionaler Sync) -->
+        <div class="settings-section">
+            <h4>🏷️ ID3-Tags synchronisieren</h4>
+            <p class="settings-hint">
+                Schreibt die DB-Song-ID zurück in jede MP3-Datei.
+                Voraussetzung dafür, dass <b>Umbenennen / Verschieben</b> beim nächsten
+                Scan erkannt wird (keine Duplikate mehr in der DB).
+            </p>
+            <div class="settings-row">
+                <select id="settings-sync-id3-mode">
+                    <option value="missing_only">Nur ungetaggte Dateien (sicher, Standard)</option>
+                    <option value="all">Alle Dateien neu schreiben (überschreibt bestehende)</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <span class="settings-hint" style="font-style: italic;">
+                    ⏱️ Dauer ca. 15-20 min für ~10.000 MP3s via SMB. Läuft im Hintergrund,
+                    Fortschritt hier sichtbar, jederzeit abbrechbar.
+                </span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="startId3Sync()" id="btn-start-sync-id3">🏷️ ID3-Tags syncen</button>
+            </div>
+        </div>
+
         <!-- Sektion: MusicBrainz Enrichment -->
         <div class="settings-section">
             <h4>🎵 Metadaten von MusicBrainz</h4>
@@ -2535,6 +2560,20 @@ function renderJobResult(job) {
     if (name === 'enrich') {
         return `📊 <b>${r.processed || 0}</b> verarbeitet, <b>${r.errors || 0}</b> Fehler`;
     }
+    if (name === 'sync_id3') {
+        const written = r.written || 0;
+        const skipped = r.skipped || 0;
+        const errors = r.errors || 0;
+        const scanned = r.scanned || 0;
+        const parts = [];
+        if (written) parts.push(`<b>${written}</b> getaggt`);
+        if (skipped) parts.push(`<b>${skipped}</b> übersprungen`);
+        if (errors)  parts.push(`<b style="color:var(--red)">${errors}</b> Fehler`);
+        const summary = parts.length
+            ? parts.join(' · ')
+            : `<i>${scanned} Dateien geprüft</i>`;
+        return `🏷️ ${summary}`;
+    }
     return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
 }
 
@@ -2574,6 +2613,20 @@ function announceJobResult(job) {
               false, 5000);
         return;
     }
+    if (job.name === 'sync_id3' && job.result) {
+        const r = job.result;
+        const written = r.written || 0;
+        const errors = r.errors || 0;
+        if (written > 0) {
+            toast(`🏷️ ${written} MP3s getaggt` +
+                  (errors ? `, ${errors} Fehler` : ''),
+                  false, 6000);
+        } else {
+            toast(`🏷️ ID3-Sync fertig — alle Dateien waren schon getaggt`,
+                  false, 5000);
+        }
+        return;
+    }
 }
 
 function escapeHtml(s) {
@@ -2608,6 +2661,35 @@ async function startScan() {
     } finally {
         btn.disabled = false;
         btn.textContent = '🔄 Jetzt scannen';
+    }
+}
+
+async function startId3Sync() {
+    const mode = document.getElementById('settings-sync-id3-mode').value;
+    const btn = document.getElementById('btn-start-sync-id3');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starte...';
+    try {
+        const r = await apiPost('/api/admin/sync-id3', { mode: mode });
+        if (r.status === 'started') {
+            const label = mode === 'missing_only' ? 'ungetaggte' : 'alle';
+            toast(`🏷️ ID3-Sync läuft (${label} Dateien)…`, false, 3000);
+            ensureSettingsPolling();
+            await refreshSettingsStatus();
+        } else {
+            toast('Unerwartete Antwort: ' + JSON.stringify(r), true, 5000);
+        }
+    } catch (e) {
+        if (e.message && e.message.includes('409')) {
+            toast('Es läuft bereits ein Job', true, 4000);
+        } else if (e.message && e.message.includes('400')) {
+            toast('Ungültiger Modus: ' + mode, true, 4000);
+        } else {
+            toast('Fehler: ' + e.message, true, 5000);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🏷️ ID3-Tags syncen';
     }
 }
 

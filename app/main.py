@@ -2171,6 +2171,64 @@ def start_enrich(req: EnrichRequest = EnrichRequest()):
     return {"status": "started", "job": job.to_dict()}
 
 
+class SyncId3Request(BaseModel):
+    """Bulk-Sync der DB → ID3-Tags der MP3-Dateien.
+
+    mode:
+        - "missing_only" (default): nur Dateien ohne
+          TXXX:MUSIK_MANAGER_SONG_ID. Sicher, idempotent, kann beliebig
+          oft laufen.
+        - "all":  alle MP3-Songs (überschreibt auch bestehende Tags).
+          Nützlich wenn z.B. ein neuer Score in der DB ist und der in
+          alle Dateien zurück soll.
+        - "force": wie "all", reserviert für spätere Erweiterungen
+          (z.B. mtime-Override).
+    """
+    mode: str = "missing_only"
+
+
+def _run_id3_sync_wrapper(db_path: str, mode: str = "missing_only",
+                           on_progress=None, should_stop=None):
+    """Adapter für JobManager: ruft run_id3_sync mit den richtigen Args."""
+    from .id3_sync import run_id3_sync
+    return run_id3_sync(
+        db_path=db_path,
+        mode=mode,
+        on_progress=on_progress,
+        should_stop=should_stop,
+    )
+
+
+@app.post("/api/admin/sync-id3")
+def start_id3_sync(req: SyncId3Request = SyncId3Request()):
+    """Bulk-Sync: schreibt DB-Score + Song-ID in alle MP3-Dateien zurück.
+
+    Voraussetzung dafür, dass Rename/Move-Detection (siehe Scanner)
+    flächendeckend greift: nur Dateien mit TXXX:MUSIK_MANAGER_SONG_ID
+    können beim nächsten Scan als umbenannt/verschoben erkannt werden.
+
+    Bei ~10.000 MP3-Dateien via SMB dauert das 15-20 min. Läuft als
+    Background-Job, Fortschritt im Settings-Modal sichtbar, jederzeit
+    stoppbar.
+    """
+    if req.mode not in ("missing_only", "all", "force"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ungültiger mode '{req.mode}'. Erlaubt: missing_only, all, force"
+        )
+    manager = get_job_manager()
+    try:
+        job = manager.start(
+            name="sync_id3",
+            fn=_run_id3_sync_wrapper,
+            db_path=str(DB_PATH),
+            mode=req.mode,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"status": "started", "job": job.to_dict()}
+
+
 @app.post("/api/jobs/stop")
 def stop_job():
     """Bricht den aktuell laufenden Job ab (sofort, aber graceful)."""

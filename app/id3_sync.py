@@ -154,3 +154,121 @@ def read_score_from_mp3(filepath: str) -> Optional[float]:
     except Exception:
         return None
     return None
+
+
+def has_mm_song_id(filepath: str) -> bool:
+    """True wenn die MP3 eine TXXX:MUSIK_MANAGER_SONG_ID hat.
+
+    Schneller O(1)-Check via tags.get() statt getall()+iter. Gebraucht
+    vom Bulk-Backfill, um entscheiden zu können ob wir schreiben müssen
+    (Mode 'missing_only')."""
+    if not filepath or "\x00" in filepath or not filepath.lower().endswith(".mp3"):
+        return False
+    path = Path(filepath)
+    if not path.exists():
+        return False
+    try:
+        tags = ID3(path)
+        t = tags.get("TXXX:MUSIK_MANAGER_SONG_ID")
+        return bool(t and t.text)
+    except Exception:
+        return False
+
+
+# === Bulk-Sync (Backfill) ===
+
+from typing import Callable, Iterable  # noqa: E402
+
+ProgressFn = Callable[[int, int, str], None]
+ShouldStopFn = Callable[[], bool]
+
+
+def run_id3_sync(
+    db_path: str | Path,
+    mode: str = "missing_only",
+    on_progress: ProgressFn | None = None,
+    should_stop: ShouldStopFn | None = None,
+) -> dict:
+    """Bulk-Backfill: schreibt TXXX+TAG+POPM für alle (oder gefilterte)
+    MP3-Songs in der DB.
+
+    Args:
+        db_path: Pfad zur SQLite-Datei mit der songs-Tabelle.
+        mode:
+            - "missing_only" (default): nur Dateien ohne mm_song_id
+            - "all":  alle MP3-Songs (überschreibt bestehende)
+            - "force": wie "all", ignoriert aber auch mtime-Check nicht
+              (reserviert für künftige Optimierung)
+        on_progress: Callback(current, total, message)
+        should_stop: Callable, der True liefert wenn der Job abgebrochen
+            werden soll.
+
+    Returns:
+        Dict mit Statistik: scanned, written, skipped, errors, stopped.
+
+    Designentscheidungen:
+        - Nur MP3 (kein FLAC/M4A/OGG): write_score_to_mp3 ist aktuell
+          nur für MP3-ID3v2 implementiert. Erweiterung später.
+        - DB ist Source of Truth: Score/ID kommen aus der DB, Datei wird
+          aktualisiert. Bei Konflikten gewinnt immer die DB (siehe
+          song-ranking.md).
+        - Atomar: write_score_to_mp3 nutzt tmp+os.replace — kein
+          Risiko halbgeschriebener Dateien.
+        - Fehler pro Datei werden gezählt, der Job bricht NICHT ab.
+    """
+    import sqlite3 as _sqlite3
+    if mode not in ("missing_only", "all", "force"):
+        raise ValueError(f"Ungültiger mode: {mode!r}")
+    # "force" ist aktuell synonym mit "all", aber semantisch anders
+    # gemeint (z.B. wenn wir später mtime-Check einbauen)
+    effective_mode = "all" if mode == "force" else mode
+
+    conn = _sqlite3.connect(str(db_path), timeout=30)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, filepath, score FROM songs "
+            "WHERE filepath LIKE '%.mp3' ORDER BY id"
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if on_progress:
+        on_progress(0, len(rows), f"{len(rows)} MP3-Songs in DB gefunden")
+
+    stats = {
+        "scanned": 0, "written": 0, "skipped": 0,
+        "errors": 0, "stopped": False,
+    }
+    for i, (song_id, filepath, score) in enumerate(rows):
+        if should_stop and should_stop():
+            stats["stopped"] = True
+            break
+        stats["scanned"] += 1
+
+        # missing_only: vor dem Schreiben prüfen ob Datei schon ID hat
+        if effective_mode == "missing_only" and has_mm_song_id(filepath):
+            stats["skipped"] += 1
+            if (i + 1) % 50 == 0 and on_progress:
+                on_progress(i + 1, len(rows),
+                            f"{i+1}/{len(rows)} verarbeitet "
+                            f"(geschrieben: {stats['written']})")
+            continue
+
+        ok, msg = write_score_to_mp3(filepath, song_id, score or 50.0)
+        if ok:
+            stats["written"] += 1
+        else:
+            stats["errors"] += 1
+            log.warning("ID3-Backfill Fehler song_id=%d: %s", song_id, msg)
+
+        if (i + 1) % 50 == 0 and on_progress:
+            on_progress(i + 1, len(rows),
+                        f"{i+1}/{len(rows)} verarbeitet "
+                        f"(geschrieben: {stats['written']}, "
+                        f"Fehler: {stats['errors']})")
+
+    if on_progress:
+        on_progress(len(rows), len(rows), "ID3-Sync abgeschlossen")
+    return stats
