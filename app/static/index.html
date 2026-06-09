@@ -2570,6 +2570,7 @@ function renderJobResult(job) {
         const skipped = r.skipped || 0;
         const errors = r.errors || 0;
         const scanned = r.scanned || 0;
+        const samples = r.error_samples || [];
         const parts = [];
         if (written) parts.push(`<b>${written}</b> getaggt`);
         if (skipped) parts.push(`<b>${skipped}</b> übersprungen`);
@@ -2577,7 +2578,34 @@ function renderJobResult(job) {
         const summary = parts.length
             ? parts.join(' · ')
             : `<i>${scanned} Dateien geprüft</i>`;
-        return `🏷️ ${summary}`;
+
+        // Fehler-Detail: erste N Fehler mit song_id + Grund. Bei >1
+        // Fehler öfter dieselbe reason → Hinweis "systematisch".
+        let detail = '';
+        if (errors > 0 && samples.length > 0) {
+            const rows = samples.map(s => {
+                const fp = s.filepath || `song_id=${s.song_id}`;
+                const fpShort = fp.length > 60 ? '…' + fp.slice(-58) : fp;
+                return `<div style="margin:2px 0; font-size:0.75rem;">`
+                     + `<code style="color:var(--text-dim)">${escapeHtml(fpShort)}</code>`
+                     + ` — ${escapeHtml(s.reason || '?')}</div>`;
+            }).join('');
+            // Pattern-Check: alle Fehler gleicher Grund?
+            const reasons = new Set(samples.map(s => s.reason));
+            const pattern = reasons.size === 1 && errors > 1
+                ? `<div style="color:var(--orange); margin-top:6px; font-size:0.78rem;">`
+                  + `⚠️ Alle ${errors} Fehler haben denselben Grund — sieht systematisch aus.</div>`
+                : '';
+            const more = errors > samples.length
+                ? `<div style="color:var(--text-dim); font-size:0.75rem; margin-top:2px;">`
+                  + `+ ${errors - samples.length} weitere nicht angezeigt</div>`
+                : '';
+            detail = `<details style="margin-top:8px;">`
+                   + `<summary style="cursor:pointer; color:var(--text-dim); font-size:0.8rem;">`
+                   + `Fehler-Details (${samples.length}${errors > samples.length ? ` von ${errors}` : ''})`
+                   + `</summary>${rows}${pattern}${more}</details>`;
+        }
+        return `🏷️ ${summary}${detail}`;
     }
     return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
 }

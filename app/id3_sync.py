@@ -237,9 +237,15 @@ def run_id3_sync(
     if on_progress:
         on_progress(0, len(rows), f"{len(rows)} MP3-Songs in DB gefunden")
 
+    # Erste N Fehler mit Details (song_id, Grund) für die UI sammeln.
+    # So sehen wir ohne Logfile, ob ein Fehler einmalig oder systematisch ist.
+    ERROR_SAMPLE_LIMIT = 5
+    error_samples: list[dict] = []
+
     stats = {
         "scanned": 0, "written": 0, "skipped": 0,
         "errors": 0, "stopped": False,
+        "error_samples": error_samples,
     }
     for i, (song_id, filepath, score) in enumerate(rows):
         if should_stop and should_stop():
@@ -262,6 +268,12 @@ def run_id3_sync(
         else:
             stats["errors"] += 1
             log.warning("ID3-Backfill Fehler song_id=%d: %s", song_id, msg)
+            if len(error_samples) < ERROR_SAMPLE_LIMIT:
+                error_samples.append({
+                    "song_id": song_id,
+                    "filepath": filepath,
+                    "reason": msg,
+                })
 
         if (i + 1) % 50 == 0 and on_progress:
             on_progress(i + 1, len(rows),
