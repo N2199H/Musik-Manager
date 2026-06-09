@@ -1124,6 +1124,21 @@ function showTab(tab, btn) {
     if (tab === 'sonos') loadSpeakers();
 }
 
+// Phase 3: Reload des aktuell sichtbaren Tabs. Wird nach Lazy-Cleanup
+// aufgerufen damit die gerade aus der DB entfernten Songs/Tracks sofort
+// aus der UI verschwinden.
+function refreshActiveTab() {
+    if (currentTab === 'browse') {
+        loadSongs();
+    } else if (currentTab === 'playlists') {
+        // Playlist-Liste neu, plus alle aktuell geoeffneten Playlist-Detail-Panels
+        loadPlaylists();
+        if (typeof _openPlaylists !== 'undefined' && _openPlaylists) {
+            _openPlaylists.forEach(id => loadPlaylistTracks(id));
+        }
+    }
+}
+
 // === Stats ===
 async function loadStats() {
     const stats = await apiGet('/api/stats');
@@ -1450,7 +1465,15 @@ async function playSong(id) {
             toast(`✓ ${r.song} → ${r.speaker} (Warteschlange +1)`);
             // Queue-Länge im Hint sofort aktualisieren (nicht 3s auf Polling warten)
             _updateQueueHint(r.speaker);
-        } catch (e) { toast(e.message, true); }
+        } catch (e) {
+            // Phase 3: 410 Gone = Song wurde von der Platte geholt, aus DB entfernt
+            if (e.message && e.message.includes('existiert nicht mehr')) {
+                toast(`🗑️ ${e.message}`, true, 6000);
+                if (typeof refreshActiveTab === 'function') refreshActiveTab();
+            } else {
+                toast(e.message, true);
+            }
+        }
         return;
     }
     // Nichts spielt → Speaker-Modal
@@ -1535,7 +1558,19 @@ async function _doPlaySong(selectedSpeakers) {
     _pendingPlaySongId = null;
     try {
         const song = await apiGet(`/api/songs/${id}`);
-        await apiPost('/api/sonos/play', { speakers: selectedSpeakers, song_id: id, shuffle: false });
+        try {
+            await apiPost('/api/sonos/play', { speakers: selectedSpeakers, song_id: id, shuffle: false });
+        } catch (e) {
+            // Phase 3: 410 Gone = Song wurde gerade von der Platte geholt und
+            // aus der DB entfernt. Andere Errors (5xx) weiterwerfen wie vorher.
+            if (e.message && e.message.includes('existiert nicht mehr')) {
+                toast(`🗑️ ${e.message}`, true, 6000);
+                // Song-Liste neu laden damit der Song aus der UI verschwindet
+                if (typeof refreshActiveTab === 'function') refreshActiveTab();
+                return;
+            }
+            throw e;
+        }
         document.getElementById('np-title').textContent = song.title;
         document.getElementById('np-artist').textContent = song.artist;
         const _npSpk1 = document.getElementById('np-speaker');
@@ -1580,7 +1615,22 @@ async function _doPlayFromPlaylist(selectedSpeakers) {
         document.getElementById('now-playing').classList.remove('hidden');
         if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
         toast(`▶ ${pending.name} → ${selectedSpeakers.join(' + ')}`);
-    } catch (e) { toast(e.message, true); }
+        // Phase 3: User-Feedback bei Lazy-Cleanup-Skips
+        if (r && r.skipped_missing && r.skipped_missing.length > 0) {
+            const list = r.skipped_missing.slice(0, 3).join(', ')
+                + (r.skipped_missing.length > 3 ? ` … (+${r.skipped_missing.length - 3})` : '');
+            toast(`🗑️ ${r.skipped_missing.length} Track(s) fehlen — übersprungen: ${list}`,
+                  true, 8000);
+            if (typeof refreshActiveTab === 'function') refreshActiveTab();
+        }
+    } catch (e) {
+        if (e.message && e.message.includes('alle') && e.message.includes('fehlen')) {
+            toast(`🗑️ ${e.message}`, true, 8000);
+            if (typeof refreshActiveTab === 'function') refreshActiveTab();
+        } else {
+            toast(e.message, true);
+        }
+    }
 }
 
 async function sonosPause() {
@@ -2278,7 +2328,24 @@ async function _doPlayPlaylist(selectedSpeakers) {
         // Play-Buttons der Liste sofort auf "+" umschalten — kein Warten auf 5s-Poll
         if (typeof _updateAllPlayButtons === 'function') _updateAllPlayButtons();
         toast(`${verb} ${name} auf ${selectedSpeakers.join(' + ')}`);
-    } catch (e) { toast(e.message, true); }
+        // Phase 3: User-Feedback wenn Tracks wegen Lazy-Cleanup fehlen.
+        // Song-Liste neu laden damit die fehlenden Tracks aus der UI verschwinden.
+        if (result && result.skipped_missing && result.skipped_missing.length > 0) {
+            const list = result.skipped_missing.slice(0, 3).join(', ')
+                + (result.skipped_missing.length > 3 ? ` … (+${result.skipped_missing.length - 3})` : '');
+            toast(`🗑️ ${result.skipped_missing.length} Track(s) fehlen — übersprungen: ${list}`,
+                  true, 8000);
+            if (typeof refreshActiveTab === 'function') refreshActiveTab();
+        }
+    } catch (e) {
+        // 410 Gone = ganze Playlist leer (alle Files fehlen)
+        if (e.message && e.message.includes('alle') && e.message.includes('fehlen')) {
+            toast(`🗑️ ${e.message}`, true, 8000);
+            if (typeof refreshActiveTab === 'function') refreshActiveTab();
+        } else {
+            toast(e.message, true);
+        }
+    }
 }
 
 // === Create Playlist ===
