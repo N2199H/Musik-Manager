@@ -1121,6 +1121,37 @@ def _solo_speaker(speaker: str) -> str:
         return f"Solo-Fehler: {e}"
 
 
+def _cleanup_missing_song(db: Session, song) -> bool:
+    """Lazy-Cleanup: prüft ob song.filepath noch existiert, wenn nicht:
+    Hard-Delete (Cascade playlist_tracks → songs). M3U wird beim naechsten
+    Playlist-Render automatisch korrekt geschrieben.
+
+    Liefert True wenn der Song geloescht wurde, False wenn noch da.
+
+    Hintergrund: NAS = Source of Truth. Wenn ein File weg ist, soll der
+    User sofort Feedback bekommen (404) statt 30s SoCo-Hänger. Diese
+    Funktion wird in allen Play/Queue-Routes aufgerufen — Diskrepanz-
+    Erkennung passiert 'bei Gelegenheit' (User spielt was), nicht nur
+    beim manuellen Rescan. Das ist der Phase-3 Lazy-Play-Check.
+    """
+    if os.path.exists(song.filepath):
+        return False
+    # File ist weg — hard-delete mit Cascade
+    song_id = song.id
+    title = f"{song.artist} - {song.title}" if song.artist else song.title
+    print(f"[lazy-cleanup] song_id={song_id} '{title}' missing on disk, hard-deleting")
+    try:
+        db.query(PlaylistTrack).filter(PlaylistTrack.song_id == song_id).delete()
+        db.query(Song).filter(Song.id == song_id).delete()
+        db.commit()
+        print(f"[lazy-cleanup] song_id={song_id} deleted (cascade)")
+    except Exception as e:
+        db.rollback()
+        print(f"[lazy-cleanup] song_id={song_id} delete failed: {e!r}")
+        return False  # bei Fehler nicht abspielen, aber auch nicht behaupten deleted
+    return True
+
+
 @app.post("/api/sonos/play")
 def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
     """Song, Playlist oder Radio-URI auf Sonos abspielen — auf einem oder mehreren Speakern.
@@ -1170,6 +1201,13 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
         song = db.query(Song).filter(Song.id == cmd.song_id).first()
         if not song:
             raise HTTPException(status_code=404, detail="Song nicht gefunden")
+        # Phase 3: Lazy-Cleanup. Wenn File weg ist, vor Spielen hard-deletet
+        # damit beim nächsten Mal kein 404+30s-Hänger mehr kommt.
+        if _cleanup_missing_song(db, song):
+            raise HTTPException(
+                status_code=410,
+                detail=f"Song '{song.filename}' existiert nicht mehr — aus DB entfernt.",
+            )
 
         # Speaker-IP
         spk_info = _get_sonos_speakers().get(speaker, {})
@@ -1205,12 +1243,21 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
         track_rows = db.query(PlaylistTrack).filter(PlaylistTrack.playlist_id == pl.id)\
             .order_by(PlaylistTrack.position).all()
         songs = []
+        skipped_missing = []  # Phase 3: Tracks die weg sind, hier sammeln
         for t in track_rows:
             song = db.query(Song).filter(Song.id == t.song_id).first()
             if song:
+                if _cleanup_missing_song(db, song):
+                    # Song wurde gerade von _cleanup_missing_song gelöscht —
+                    # nicht in songs aufnehmen.
+                    skipped_missing.append(f"{song.artist} - {song.title}" if song.artist else song.filename)
+                    continue
                 songs.append(song)
         if not songs:
-            raise HTTPException(status_code=404, detail="Playlist ist leer")
+            raise HTTPException(
+                status_code=410,
+                detail=f"Playlist '{cmd.playlist_name}' ist leer (alle {len(skipped_missing)} Songs fehlen auf der Platte)",
+            )
 
         # Shuffle im Backend statt Sonos-intern (x-file-cifs URIs mischt Sonos
         # unzuverlässig). Hier mischen = deterministisch, funktioniert überall.
@@ -1278,11 +1325,18 @@ def sonos_play(cmd: SonosCommand, db: Session = Depends(get_db)):
                     "song_id": songs[0].id,
                     "started_at": datetime.now().isoformat(),
                 }
+                detail = f"Playlist '{cmd.playlist_name}' ({len(songs)} Songs, SoCo)"
+                if skipped_missing:
+                    # Phase 3: User-Feedback wenn Tracks wegen Lazy-Cleanup fehlen
+                    detail += f" — {len(skipped_missing)} übersprungen (Files fehlen): " + \
+                              ", ".join(skipped_missing[:3]) + \
+                              ("…" if len(skipped_missing) > 3 else "")
                 return {
                     "status": "playing",
                     "speaker": speaker,
-                    "detail": f"Playlist '{cmd.playlist_name}' ({len(songs)} Songs, SoCo)",
+                    "detail": detail,
                     "method": "soco-http",
+                    "skipped_missing": skipped_missing,
                 }
             result_detail = f"SoCo-Pfad fehlgeschlagen nach 2 Versuchen: {soco_err}"
         else:
@@ -1381,10 +1435,23 @@ def sonos_play_from_playlist(req: PlayFromPlaylistRequest, db: Session = Depends
         .order_by(PlaylistTrack.position).all()
     if not track_rows:
         raise HTTPException(status_code=400, detail="Playlist ist leer")
-    songs = [db.query(Song).filter(Song.id == t.song_id).first() for t in track_rows]
-    songs = [s for s in songs if s]  # kaputte Referenzen raus
+    # Phase 3: Lazy-Cleanup pro Track. Missing Files werden rausgefiltert +
+    # in DB hard-deleted.
+    songs = []
+    skipped_missing = []
+    for t in track_rows:
+        song = db.query(Song).filter(Song.id == t.song_id).first()
+        if not song:
+            continue  # kaputte Referenz
+        if _cleanup_missing_song(db, song):
+            skipped_missing.append(f"{song.artist} - {song.title}" if song.artist else song.filename)
+            continue
+        songs.append(song)
     if not songs:
-        raise HTTPException(status_code=400, detail="Keine abspielbaren Tracks in der Playlist")
+        raise HTTPException(
+            status_code=410,
+            detail=f"Keine abspielbaren Tracks in Playlist '{req.playlist_name}' (alle {len(skipped_missing)} Files fehlen auf der Platte)",
+        )
 
     # 3) Start-Index finden
     try:
@@ -1450,6 +1517,8 @@ def sonos_play_from_playlist(req: PlayFromPlaylistRequest, db: Session = Depends
         "total_in_queue": 1 + len(remaining),
         "shuffle": req.shuffle,
         "method": "soco-http",
+        # Phase 3: User-Feedback wenn Tracks wegen Lazy-Cleanup fehlen
+        "skipped_missing": skipped_missing,
     }
 
 
@@ -1458,6 +1527,12 @@ def sonos_queue_add(req: QueueAddRequest, db: Session = Depends(get_db)):
     song = db.query(Song).filter(Song.id == req.song_id).first()
     if not song:
         raise HTTPException(status_code=404, detail="Song nicht gefunden")
+    # Phase 3: Lazy-Cleanup. Wenn File weg ist, vor Queue-Add hard-deletet.
+    if _cleanup_missing_song(db, song):
+        raise HTTPException(
+            status_code=410,
+            detail=f"Song '{song.filename}' existiert nicht mehr — aus DB entfernt.",
+        )
 
     # Speaker bestimmen: entweder angegeben oder "der, der grad spielt"
     speaker = _get_speaker_name(req.speaker) if req.speaker else None
