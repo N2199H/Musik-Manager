@@ -2549,18 +2549,48 @@ function renderJobResult(job) {
         const skipped = r.skipped || 0;
         const errors = r.errors || 0;
         const scanned = r.scanned || 0;
+        const deleted = r.deleted || 0;
+        const plTracksRemoved = r.playlist_tracks_removed || 0;
+        const samples = r.error_samples || [];
         const stopped = r.stopped;
         const parts = [];
         if (inserted) parts.push(`<b>${inserted}</b> neue`);
         if (renamed)  parts.push(`<b>${renamed}</b> umbenannt/verschoben`);
         if (updated)  parts.push(`<b>${updated}</b> aktualisiert`);
-        if (skipped && !inserted && !updated && !renamed) parts.push(`<b>${skipped}</b> unverändert`);
+        if (deleted)  parts.push(`<b style="color:var(--orange)">${deleted}</b> gelöscht`);
+        if (plTracksRemoved) parts.push(`<b>${plTracksRemoved}</b> aus Playlists entfernt`);
+        if (skipped && !inserted && !updated && !renamed && !deleted) parts.push(`<b>${skipped}</b> unverändert`);
         if (errors)   parts.push(`<b style="color:var(--red)">${errors}</b> Fehler`);
         if (stopped)  parts.push(`<i>abgebrochen</i>`);
         const summary = parts.length
             ? parts.join(' · ')
             : `<i>${scanned} Dateien geprüft, keine Änderungen</i>`;
-        return `📊 ${summary}`;
+        // Fehler-Detail: ausklappbar wie bei sync_id3. Pattern-Hinweis wenn
+        // alle errors denselben Grund haben (= systematisch, nicht Einzelfall).
+        let detail = '';
+        if (errors > 0 && samples.length > 0) {
+            const rows = samples.map(s => {
+                const fp = s.filepath || '?';
+                const fpShort = fp.length > 60 ? '…' + fp.slice(-58) : fp;
+                return `<div style="margin:2px 0; font-size:0.75rem;">`
+                     + `<code style="color:var(--text-dim)">${escapeHtml(fpShort)}</code>`
+                     + ` — ${escapeHtml(s.reason || '?')}</div>`;
+            }).join('');
+            const reasons = new Set(samples.map(s => s.reason));
+            const pattern = reasons.size === 1 && errors > 1
+                ? `<div style="color:var(--orange); margin-top:6px; font-size:0.78rem;">`
+                  + `⚠️ Alle ${errors} Fehler haben denselben Grund — sieht systematisch aus.</div>`
+                : '';
+            const more = errors > samples.length
+                ? `<div style="color:var(--text-dim); font-size:0.75rem; margin-top:2px;">`
+                  + `+ ${errors - samples.length} weitere nicht angezeigt</div>`
+                : '';
+            detail = `<details style="margin-top:8px;">`
+                   + `<summary style="cursor:pointer; color:var(--text-dim); font-size:0.8rem;">`
+                   + `Fehler-Details (${samples.length}${errors > samples.length ? ` von ${errors}` : ''})`
+                   + `</summary>${rows}${pattern}${more}</details>`;
+        }
+        return `📊 ${summary}${detail}`;
     }
     if (name === 'enrich') {
         return `📊 <b>${r.processed || 0}</b> verarbeitet, <b>${r.errors || 0}</b> Fehler`;

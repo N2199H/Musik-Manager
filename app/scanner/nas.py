@@ -95,11 +95,16 @@ def extract_tags(filepath: str) -> dict:
         info["filesize"] = os.path.getsize(filepath)
     except OSError:
         pass
-    try:
-        mf = MutagenFile(filepath)
-    except Exception as e:  # kaputte Datei o.ä.
-        print(f"  ⚠ Fehler bei {info['filename']}: {e}", file=sys.stderr)
-        mf = None
+    # MutagenFile wirft bei kaputten Files 'can't sync to MPEG frame' o.ä.
+    # Wenn es fehlschlaegt, lassen wir den File aus der DB raus — der File
+    # ist ohnehin nicht abspielbar. Caller zaehlt das als error + sample.
+    # length==0 lassen wir durch (manche Files haben ID3 ohne Audio-Stream,
+    # oder das ist ein Edge-Case den wir nicht verschlimmern wollen).
+    # Original-Exception weiterwerfen — nicht in RuntimeError verpacken,
+    # damit der Caller den echten Typ (HeaderNotFoundError, ...) sieht.
+    mf = MutagenFile(filepath)
+    if mf is None:
+        raise ValueError("kein Audio-Format erkannt")
     if mf is not None:
         try:
             info["duration_sec"] = round(mf.info.length, 1)
@@ -154,8 +159,13 @@ def extract_tags(filepath: str) -> dict:
     return info
 
 
-def _insert_song(conn: sqlite3.Connection, song_info: dict) -> bool:
-    """INSERT OR REPLACE. Liefert True bei Erfolg."""
+def _insert_song(conn: sqlite3.Connection, song_info: dict) -> str | None:
+    """INSERT OR REPLACE. Liefert None bei Erfolg, Fehler-String sonst.
+
+    Vorher: stiller False-Return. User sah "N Fehler" ohne zu wissen was.
+    Jetzt: Fehlergrund wird in error_samples gesammelt (analog sync_id3)
+    damit die UI ausklappbar anzeigen kann welche Pfade/Gründe es sind.
+    """
     try:
         conn.execute(
             """
@@ -172,10 +182,10 @@ def _insert_song(conn: sqlite3.Connection, song_info: dict) -> bool:
                 song_info["filesize"],
             ),
         )
-        return True
+        return None
     except sqlite3.Error as e:
         print(f"  ⚠ DB-Fehler: {e}", file=sys.stderr)
-        return False
+        return f"db: {e}"
 
 
 def run_scan(
@@ -217,8 +227,17 @@ def run_scan(
 
         stats = {
             "scanned": 0, "inserted": 0, "updated": 0, "skipped": 0,
-            "renamed": 0, "errors": 0, "stopped": False,
+            "renamed": 0, "deleted": 0, "playlist_tracks_removed": 0,
+            "errors": 0, "stopped": False,
+            # Sample der ersten Fehler (max 5) — UI klappt das aus,
+            # so wie bei sync_id3. Pattern-Hinweis wenn alle gleich.
+            "error_samples": [],
         }
+        ERROR_SAMPLE_LIMIT = 5
+        # Hard-Delete-Reconciliation (Files die in DB aber nicht auf Platte)
+        # wird NACH dem Loop gemacht — damit Rename-Erkennung via mm_song_id
+        # vorher laufen kann und die DB-Pfade aktualisiert. Sonst wuerden
+        # renamed files fälschlich als geloescht erkannt.
         for i, filepath in enumerate(files):
             if should_stop and should_stop():
                 stats["stopped"] = True
@@ -289,24 +308,70 @@ def run_scan(
                     already = cur2.fetchone()
                 else:
                     already = None
-                if _insert_song(conn, song_info):
+                insert_err = _insert_song(conn, song_info)
+                if insert_err is None:
                     if already:
                         stats["updated"] += 1
                     else:
                         stats["inserted"] += 1
                 else:
                     stats["errors"] += 1
+                    if len(stats["error_samples"]) < ERROR_SAMPLE_LIMIT:
+                        stats["error_samples"].append({
+                            "filepath": filepath,
+                            "reason": insert_err,
+                        })
                 stats["scanned"] += 1
             except Exception as e:
                 stats["errors"] += 1
                 stats["scanned"] += 1
+                if len(stats["error_samples"]) < ERROR_SAMPLE_LIMIT:
+                    stats["error_samples"].append({
+                        "filepath": filepath,
+                        "reason": f"{type(e).__name__}: {e}",
+                    })
                 print(f"  ⚠ Fehler bei {filepath}: {e}", file=sys.stderr)
             if (i + 1) % 50 == 0 and on_progress:
                 on_progress(i + 1, len(files),
                             f"{i+1}/{len(files)} verarbeitet")
+        # Post-Loop Reconciliation: Files in DB die NICHT (mehr) auf Platte sind
+        # → hart loeschen. Reihenfolge: erst playlist_tracks (Cascade), dann
+        # songs. So vermeiden wir temporaer "Geister-Playlists" (Eintrag
+        # ohne Song). Anschliessend wird die M3U beim naechsten Playlist-Render
+        # automatisch korrekt geschrieben.
+        if not stats["stopped"]:
+            # Set-Build ist O(N) und billig; 10k Strings passen locker in RAM
+            files_set = set(files)
+            cur.execute("SELECT id, filepath FROM songs")
+            orphaned = [(sid, fp) for sid, fp in cur.fetchall()
+                        if fp not in files_set]
+            if orphaned:
+                orphan_ids = [sid for sid, _ in orphaned]
+                # SQLite limit: 999 Parameter pro Query. Bei >999 IDs
+                # batchen wir in Chunks. Spart "too many SQL variables"
+                # Fehler bei sehr grossen DBs (>10k orphans).
+                BATCH = 999
+                for i in range(0, len(orphan_ids), BATCH):
+                    batch = orphan_ids[i:i + BATCH]
+                    placeholders = ",".join("?" * len(batch))
+                    cur.execute(
+                        f"DELETE FROM playlist_tracks WHERE song_id IN ({placeholders})",
+                        batch,
+                    )
+                    stats["playlist_tracks_removed"] += cur.rowcount
+                    cur.execute(
+                        f"DELETE FROM songs WHERE id IN ({placeholders})",
+                        batch,
+                    )
+                    stats["deleted"] += cur.rowcount
+                if on_progress:
+                    on_progress(
+                        len(files), len(files),
+                        f"Scan abgeschlossen — {stats['deleted']} geloescht, "
+                        f"{stats['playlist_tracks_removed']} Playlist-Tracks entfernt",
+                    )
+
         conn.commit()
-        if on_progress:
-            on_progress(len(files), len(files), "Scan abgeschlossen")
         return stats
     finally:
         conn.close()
