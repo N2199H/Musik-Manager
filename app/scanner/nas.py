@@ -188,10 +188,19 @@ def _insert_song(conn: sqlite3.Connection, song_info: dict) -> str | None:
         return f"db: {e}"
 
 
+# Safety: Wenn ein Scan mehr als diese Anzahl Songs löschen würde, fragt
+# der Scanner nach Bestätigung bzw. bricht mit einer deutlichen Meldung ab.
+# Datenverlust-Bug am 9.6.2026: 10.634+ Songs + 1616 playlist_tracks wurden
+# gelöscht, weil Reconciliation auf einem Sub-Ordner-Scan gelaufen ist.
+# Siehe git log: "playlists waren plötzlich leer".
+RECONCILIATION_DELETE_LIMIT = 500
+
+
 def run_scan(
     music_dir: str | Path,
     db_path: str | Path,
     force_rescan: bool = False,
+    enable_reconciliation: bool = True,
     on_progress: ProgressFn | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> dict:  # type: ignore[type-arg]
@@ -202,6 +211,13 @@ def run_scan(
         db_path: Pfad zur SQLite-Datei
         force_rescan: Wenn True, werden auch bereits vorhandene Dateien
             erneut eingelesen (UPDATE statt SKIP)
+        enable_reconciliation: Wenn True (Default), werden DB-Songs
+            gelöscht, deren Datei auf Platte fehlt. **GEFÄHRLICH bei
+            Sub-Ordner-Scans** — alle DB-Songs außerhalb des Scan-Pfads
+            werden dann als "orphans" behandelt und gelöscht. Bei
+            Sub-Ordner-Scans (z.B. Pink-Floyd-Recovery) **immer False setzen**.
+            Wird automatisch deaktiviert, wenn der Reconcile > 500 Songs
+            löschen würde UND music_dir nicht die volle Library ist.
         on_progress: Optionaler Callback (current, total, message).
             Wird alle 50 Songs + am Ende aufgerufen.
         should_stop: Optionaler Callable, der True liefert wenn der Job
@@ -210,7 +226,8 @@ def run_scan(
     Returns:
         Dict mit Statistik: scanned, inserted, updated, skipped, errors,
         stopped, renamed (neue Kategorie — Datei hatte ID3-Song-ID, Pfad
-        wurde in der DB aktualisiert).
+        wurde in der DB aktualisiert), reconciliation_skipped (bool — ob
+        Reconciliation wegen Safety übersprungen wurde).
     """
     music_dir = Path(music_dir)
     db_path = Path(db_path)
@@ -232,6 +249,7 @@ def run_scan(
             # Sample der ersten Fehler (max 5) — UI klappt das aus,
             # so wie bei sync_id3. Pattern-Hinweis wenn alle gleich.
             "error_samples": [],
+            "reconciliation_skipped": False,
         }
         ERROR_SAMPLE_LIMIT = 5
         # Hard-Delete-Reconciliation (Files die in DB aber nicht auf Platte)
@@ -339,37 +357,61 @@ def run_scan(
         # songs. So vermeiden wir temporaer "Geister-Playlists" (Eintrag
         # ohne Song). Anschliessend wird die M3U beim naechsten Playlist-Render
         # automatisch korrekt geschrieben.
-        if not stats["stopped"]:
+        reconciliation_skipped = False
+        if not stats["stopped"] and enable_reconciliation:
             # Set-Build ist O(N) und billig; 10k Strings passen locker in RAM
             files_set = set(files)
             cur.execute("SELECT id, filepath FROM songs")
             orphaned = [(sid, fp) for sid, fp in cur.fetchall()
                         if fp not in files_set]
             if orphaned:
-                orphan_ids = [sid for sid, _ in orphaned]
-                # SQLite limit: 999 Parameter pro Query. Bei >999 IDs
-                # batchen wir in Chunks. Spart "too many SQL variables"
-                # Fehler bei sehr grossen DBs (>10k orphans).
-                BATCH = 999
-                for i in range(0, len(orphan_ids), BATCH):
-                    batch = orphan_ids[i:i + BATCH]
-                    placeholders = ",".join("?" * len(batch))
-                    cur.execute(
-                        f"DELETE FROM playlist_tracks WHERE song_id IN ({placeholders})",
-                        batch,
+                # SAFETY-GATE: Wenn der Reconcile mehr als RECONCILIATION_DELETE_LIMIT
+                # Songs löschen würde UND der Scan-Pfad offensichtlich ein Sub-Ordner
+                # ist (also nur ein Bruchteil der DB-Songs enthält), brechen wir ab.
+                # Verhindert den Pink-Floyd-Bug: 10.000+ Songs + alle playlist_tracks
+                # gelöscht, weil jemand mit Sub-Ordner music_dir gescannt hat.
+                total_songs = cur.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
+                scan_coverage = len(files_set) / max(total_songs, 1)
+                is_subdir_scan = scan_coverage < 0.5  # weniger als 50% der DB
+
+                if len(orphaned) > RECONCILIATION_DELETE_LIMIT and is_subdir_scan:
+                    print(
+                        f"\n  ⚠️  SAFETY: Reconciliation würde {len(orphaned)} Songs "
+                        f"löschen ({stats.get('playlist_tracks_removed', 0)} playlist_tracks "
+                        f"betroffen), aber Scan-Pfad {music_dir} deckt nur "
+                        f"{scan_coverage*100:.1f}% der DB ab — vermutlich Sub-Ordner-Scan.\n"
+                        f"     Überspringe Reconciliation. Wenn das gewollt ist, "
+                        f"rufe run_scan() mit enable_reconciliation=True "
+                        f"nach explizitem Backup auf.",
+                        file=sys.stderr,
                     )
-                    stats["playlist_tracks_removed"] += cur.rowcount
-                    cur.execute(
-                        f"DELETE FROM songs WHERE id IN ({placeholders})",
-                        batch,
-                    )
-                    stats["deleted"] += cur.rowcount
-                if on_progress:
-                    on_progress(
-                        len(files), len(files),
-                        f"Scan abgeschlossen — {stats['deleted']} geloescht, "
-                        f"{stats['playlist_tracks_removed']} Playlist-Tracks entfernt",
-                    )
+                    reconciliation_skipped = True
+                else:
+                    orphan_ids = [sid for sid, _ in orphaned]
+                    # SQLite limit: 999 Parameter pro Query. Bei >999 IDs
+                    # batchen wir in Chunks. Spart "too many SQL variables"
+                    # Fehler bei sehr grossen DBs (>10k orphans).
+                    BATCH = 999
+                    for i in range(0, len(orphan_ids), BATCH):
+                        batch = orphan_ids[i:i + BATCH]
+                        placeholders = ",".join("?" * len(batch))
+                        cur.execute(
+                            f"DELETE FROM playlist_tracks WHERE song_id IN ({placeholders})",
+                            batch,
+                        )
+                        stats["playlist_tracks_removed"] += cur.rowcount
+                        cur.execute(
+                            f"DELETE FROM songs WHERE id IN ({placeholders})",
+                            batch,
+                        )
+                        stats["deleted"] += cur.rowcount
+                    if on_progress:
+                        on_progress(
+                            len(files), len(files),
+                            f"Scan abgeschlossen — {stats['deleted']} geloescht, "
+                            f"{stats['playlist_tracks_removed']} Playlist-Tracks entfernt",
+                        )
+        stats["reconciliation_skipped"] = reconciliation_skipped
 
         conn.commit()
         return stats
