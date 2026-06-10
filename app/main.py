@@ -2304,6 +2304,52 @@ def start_id3_sync(req: SyncId3Request = SyncId3Request()):
     return {"status": "started", "job": job.to_dict()}
 
 
+class SyncId3FromFileRequest(BaseModel):
+    mode: str = "non_default_only"
+
+
+def _run_id3_from_file_wrapper(db_path: str, mode: str = "non_default_only",
+                                on_progress=None, should_stop=None):
+    """Adapter für JobManager: ruft run_id3_from_file."""
+    from .id3_sync import run_id3_from_file
+    return run_id3_from_file(
+        db_path=db_path,
+        mode=mode,
+        on_progress=on_progress,
+        should_stop=should_stop,
+    )
+
+
+@app.post("/api/admin/sync-id3-from-file")
+def start_id3_sync_from_file(req: SyncId3FromFileRequest = SyncId3FromFileRequest()):
+    """Reverse-Sync: liest TXXX_SCORE aus MP3-Dateien und updated die DB.
+
+    Hintergrund: User können extern bewerten (z.B. in Mp3tag, Winamp, WMP).
+    Das landet in TXXX:MUSIK_MANAGER_SCORE. Die DB weiß nichts davon —
+    dieser Job holt die Bewertungen in die DB, sodass die App sie anzeigt.
+
+    Bei ~10.000 MP3s via SMB dauert das ca. 5-10 min (nur lesen, kein
+    Schreiben). Läuft als Background-Job, Fortschritt im Settings-Modal
+    sichtbar, jederzeit stoppbar.
+    """
+    if req.mode not in ("non_default_only", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ungültiger mode '{req.mode}'. Erlaubt: non_default_only, all"
+        )
+    manager = get_job_manager()
+    try:
+        job = manager.start(
+            name="sync_id3_from_file",
+            fn=_run_id3_from_file_wrapper,
+            db_path=str(DB_PATH),
+            mode=req.mode,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"status": "started", "job": job.to_dict()}
+
+
 @app.post("/api/jobs/stop")
 def stop_job():
     """Bricht den aktuell laufenden Job ab (sofort, aber graceful)."""

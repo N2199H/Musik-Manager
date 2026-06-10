@@ -284,3 +284,142 @@ def run_id3_sync(
     if on_progress:
         on_progress(len(rows), len(rows), "ID3-Sync abgeschlossen")
     return stats
+
+
+def run_id3_from_file(
+    db_path: str | Path,
+    mode: str = "non_default_only",
+    on_progress: ProgressFn | None = None,
+    should_stop: ShouldStopFn | None = None,
+) -> dict:
+    """Reverse-Sync: liest TXXX_SCORE aus MP3 und schreibt den Wert in songs.score.
+
+    Hintergrund: Wenn ein User extern bewertet (z.B. in Mp3tag, Winamp,
+    WMP) wird das in TXXX:MUSIK_MANAGER_SCORE gespeichert. Die DB weiß
+    nichts davon — diese Funktion liest die Datei-Tags und updated die
+    DB, sodass die App die Bewertung anzeigt.
+
+    Args:
+        db_path: Pfad zur SQLite-Datei.
+        mode:
+            - "non_default_only" (default): nur Songs mit TXXX_SCORE != 50.0
+              updaten. Sicher, weil 50.0 der DB-Default ist — wir überschreiben
+              nur echte Bewertungen.
+            - "all": für jeden Song den File-Wert nehmen (auch 50.0). Macht
+              Sinn wenn die DB stark veraltet ist. Vorsicht: Song-Tags die
+              mal ohne Bewertung geschrieben wurden (Score=50.0) zwingen
+              die DB auf 50.0 zurück — kein Datenverlust, aber auch kein
+              Mehrwert. Für 99% der Fälle ist "non_default_only" richtig.
+        on_progress: Callback(current, total, message).
+        should_stop: Callable, der True liefert wenn der Job abgebrochen
+            werden soll.
+
+    Returns:
+        Dict mit Statistik: scanned, updated, skipped, errors, stopped,
+        error_samples (analog run_id3_sync).
+
+    Designentscheidungen:
+        - File ist Source of Truth für diesen Job (nicht DB). User
+          hat extern bewertet, wir holen das in die DB.
+        - Nur MP3 (kein FLAC/M4A/OGG): wir lesen ID3v2 — andere Formate
+          haben andere Tag-Systeme (FLAC: Vorbis Comments, M4A: iTunes
+          atoms). Erweiterung später.
+        - Atomar: einzelne UPDATE-Statements; Fehler pro Datei zählen,
+          Job bricht nicht ab.
+        - "non_default_only" prüft NICHT ob DB und File gleich sind —
+          wir vertrauen darauf, dass 50.0 ein klar definierter Default
+          ist. Wenn der User extern denselben Wert 1:1 zurückschreibt,
+          gibt das einen no-op UPDATE (SQLite-Optimierer überspringt).
+    """
+    import sqlite3 as _sqlite3
+    if mode not in ("non_default_only", "all"):
+        raise ValueError(f"Ungültiger mode: {mode!r}")
+
+    conn = _sqlite3.connect(str(db_path), timeout=30)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, filepath, score FROM songs "
+            "WHERE filepath LIKE '%.mp3' ORDER BY id"
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if on_progress:
+        on_progress(0, len(rows), f"{len(rows)} MP3-Songs gelesen")
+
+    ERROR_SAMPLE_LIMIT = 5
+    error_samples: list[dict] = []
+
+    stats = {
+        "scanned": 0, "updated": 0, "skipped": 0,
+        "errors": 0, "stopped": False,
+        "error_samples": error_samples,
+    }
+
+    # Sammle Updates, commit am Ende in einem Rutsch (Performance)
+    pending_updates: list[tuple[float, int]] = []  # (score, song_id)
+
+    for i, (song_id, filepath, db_score) in enumerate(rows):
+        if should_stop and should_stop():
+            stats["stopped"] = True
+            break
+        stats["scanned"] += 1
+
+        # File lesen
+        file_score = read_score_from_mp3(filepath)
+        if file_score is None:
+            stats["skipped"] += 1
+            if (i + 1) % 50 == 0 and on_progress:
+                on_progress(i + 1, len(rows),
+                            f"{i+1}/{len(rows)} gelesen "
+                            f"(updated: {stats['updated']})")
+            continue
+
+        # Modus-Filter
+        if mode == "non_default_only" and abs(file_score - 50.0) < 0.01:
+            stats["skipped"] += 1
+            if (i + 1) % 50 == 0 and on_progress:
+                on_progress(i + 1, len(rows),
+                            f"{i+1}/{len(rows)} gelesen "
+                            f"(updated: {stats['updated']})")
+            continue
+
+        # Sammeln für Batch-Commit
+        pending_updates.append((file_score, song_id))
+        stats["updated"] += 1
+
+        if (i + 1) % 50 == 0 and on_progress:
+            on_progress(i + 1, len(rows),
+                        f"{i+1}/{len(rows)} gelesen "
+                        f"(updated: {stats['updated']})")
+
+    # Batch-Commit
+    if pending_updates and not stats["stopped"]:
+        try:
+            conn = _sqlite3.connect(str(db_path), timeout=30)
+            try:
+                cur = conn.cursor()
+                cur.executemany(
+                    "UPDATE songs SET score = ? WHERE id = ?",
+                    pending_updates,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            log.exception("Batch-Update fehlgeschlagen")
+            stats["errors"] += 1
+            if len(error_samples) < ERROR_SAMPLE_LIMIT:
+                error_samples.append({
+                    "song_id": None,
+                    "filepath": None,
+                    "reason": f"db batch update: {e}",
+                })
+
+    if on_progress:
+        on_progress(len(rows), len(rows),
+                    f"ID3→DB-Sync abgeschlossen: {stats['updated']} updated, "
+                    f"{stats['skipped']} übersprungen")
+    return stats

@@ -1021,6 +1021,32 @@
             </div>
         </div>
 
+        <!-- Sektion: ID3 → DB (externe Bewertungen übernehmen) -->
+        <div class="settings-section">
+            <h4>📥 ID3 → DB synchronisieren</h4>
+            <p class="settings-hint">
+                Liest <code>TXXX:MUSIK_MANAGER_SCORE</code> aus jeder MP3-Datei
+                und übernimmt den Wert in die DB. Nützlich wenn du extern
+                bewertet hast (z.B. in Mp3tag, Winamp, WMP) — die App zeigt
+                die Bewertungen dann an.
+            </p>
+            <div class="settings-row">
+                <select id="settings-sync-id3-from-file-mode">
+                    <option value="non_default_only">Nur Bewertungen ≠ 50 (Standard, sicher)</option>
+                    <option value="all">Auch 50 überschreiben (DB komplett zurücksetzen)</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <span class="settings-hint" style="font-style: italic;">
+                    ⏱️ Dauer ca. 5-10 min für ~10.000 MP3s via SMB (nur Lesen).
+                    Läuft im Hintergrund, Fortschritt hier sichtbar, jederzeit abbrechbar.
+                </span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="startId3SyncFromFile()" id="btn-start-sync-id3-from-file">📥 ID3 → DB syncen</button>
+            </div>
+        </div>
+
         <!-- Sektion: MusicBrainz Enrichment -->
         <div class="settings-section">
             <h4>🎵 Metadaten von MusicBrainz</h4>
@@ -2704,6 +2730,45 @@ function renderJobResult(job) {
         }
         return `🏷️ ${summary}${detail}`;
     }
+    if (name === 'sync_id3_from_file') {
+        const updated = r.updated || 0;
+        const skipped = r.skipped || 0;
+        const errors = r.errors || 0;
+        const scanned = r.scanned || 0;
+        const samples = r.error_samples || [];
+        const parts = [];
+        if (updated) parts.push(`<b>${updated}</b> aktualisiert`);
+        if (skipped) parts.push(`<b>${skipped}</b> übersprungen`);
+        if (errors)  parts.push(`<b style="color:var(--red)">${errors}</b> Fehler`);
+        const summary = parts.length
+            ? parts.join(' · ')
+            : `<i>${scanned} Dateien gelesen</i>`;
+
+        let detail = '';
+        if (errors > 0 && samples.length > 0) {
+            const rows = samples.map(s => {
+                const fp = s.filepath || `song_id=${s.song_id}`;
+                const fpShort = fp.length > 60 ? '…' + fp.slice(-58) : fp;
+                return `<div style="margin:2px 0; font-size:0.75rem;">`
+                     + `<code style="color:var(--text-dim)">${escapeHtml(fpShort)}</code>`
+                     + ` — ${escapeHtml(s.reason || '?')}</div>`;
+            }).join('');
+            const reasons = new Set(samples.map(s => s.reason));
+            const pattern = reasons.size === 1 && errors > 1
+                ? `<div style="color:var(--orange); margin-top:6px; font-size:0.78rem;">`
+                  + `⚠️ Alle ${errors} Fehler haben denselben Grund — sieht systematisch aus.</div>`
+                : '';
+            const more = errors > samples.length
+                ? `<div style="color:var(--text-dim); font-size:0.75rem; margin-top:2px;">`
+                  + `+ ${errors - samples.length} weitere nicht angezeigt</div>`
+                : '';
+            detail = `<details style="margin-top:8px;">`
+                   + `<summary style="cursor:pointer; color:var(--text-dim); font-size:0.8rem;">`
+                   + `Fehler-Details (${samples.length}${errors > samples.length ? ` von ${errors}` : ''})`
+                   + `</summary>${rows}${pattern}${more}</details>`;
+        }
+        return `📥 ${summary}${detail}`;
+    }
     return `<pre>${escapeHtml(JSON.stringify(r, null, 2))}</pre>`;
 }
 
@@ -2754,6 +2819,23 @@ function announceJobResult(job) {
         } else {
             toast(`🏷️ ID3-Sync fertig — alle Dateien waren schon getaggt`,
                   false, 5000);
+        }
+        return;
+    }
+    if (job.name === 'sync_id3_from_file' && job.result) {
+        const r = job.result;
+        const updated = r.updated || 0;
+        const skipped = r.skipped || 0;
+        const errors = r.errors || 0;
+        if (updated > 0) {
+            toast(`📥 ${updated} DB-Bewertungen aktualisiert` +
+                  (errors ? `, ${errors} Fehler` : ''),
+                  false, 6000);
+        } else if (skipped > 0) {
+            toast(`📥 ID3→DB-Sync fertig — keine neuen Bewertungen gefunden`,
+                  false, 5000);
+        } else {
+            toast(`📥 ID3→DB-Sync fertig`, false, 4000);
         }
         return;
     }
@@ -2820,6 +2902,35 @@ async function startId3Sync() {
     } finally {
         btn.disabled = false;
         btn.textContent = '🏷️ ID3-Tags syncen';
+    }
+}
+
+async function startId3SyncFromFile() {
+    const mode = document.getElementById('settings-sync-id3-from-file-mode').value;
+    const btn = document.getElementById('btn-start-sync-id3-from-file');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starte...';
+    try {
+        const r = await apiPost('/api/admin/sync-id3-from-file', { mode: mode });
+        if (r.status === 'started') {
+            const label = mode === 'non_default_only' ? 'echte Bewertungen' : 'alle';
+            toast(`📥 ID3→DB-Sync läuft (${label})…`, false, 3000);
+            ensureSettingsPolling();
+            await refreshSettingsStatus();
+        } else {
+            toast('Unerwartete Antwort: ' + JSON.stringify(r), true, 5000);
+        }
+    } catch (e) {
+        if (e.message && e.message.includes('409')) {
+            toast('Es läuft bereits ein Job', true, 4000);
+        } else if (e.message && e.message.includes('400')) {
+            toast('Ungültiger Modus: ' + mode, true, 4000);
+        } else {
+            toast('Fehler: ' + e.message, true, 5000);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📥 ID3 → DB syncen';
     }
 }
 
