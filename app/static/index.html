@@ -1076,6 +1076,9 @@
                     <li><b>🗑:</b> Playlist löschen</li>
                 </ul>
 
+                <h5>Umbenennen</h5>
+                <p>Doppelklick auf den Playlist-Namen öffnet das Rename-Modal. <b>Wenn die Playlist eine M3U-Datei auf dem NAS hat, wird die M3U automatisch mit-umbenannt</b> (atomar via <code>os.replace</code> — kein Datenverlust, keine Duplikate). Playlists ohne M3U (manuell angelegt) bleiben unverändert auf der NAS — da gibt's schlicht keine Datei zum Umbenennen.</p>
+
                 <h5>Tracks bearbeiten</h5>
                 <ul>
                     <li><b>Reihenfolge ändern:</b> ↑ ↓ Buttons links neben dem Song</li>
@@ -2717,8 +2720,19 @@ async function doRenamePlaylist() {
     const newName = document.getElementById('edit-pl-name').value.trim();
     if (!newName || _renamePlaylistId === null) return;
     try {
-        await apiPatch(`/api/playlists/${_renamePlaylistId}`, { name: newName });
-        toast(`✏️ Umbenannt zu "${newName}"`);
+        const r = await apiPatch(`/api/playlists/${_renamePlaylistId}`, { name: newName });
+        // M3U-Rename-Info: Server liefert r.m3u_rename falls umbenannt
+        // (kann auch fehlen, wenn die Playlist keine M3U hat oder der
+        // Rename fehlgeschlagen ist).
+        let suffix = '';
+        if (r.m3u_rename) {
+            if (r.m3u_rename.renamed) {
+                suffix = ' ✓ M3U mit-umbenannt';
+            } else {
+                suffix = ` ⚠️ M3U-Rename fehlgeschlagen: ${r.m3u_rename.error || '?'}`;
+            }
+        }
+        toast(`✏️ Umbenannt zu "${newName}"${suffix}`);
         hideModal();
         _renamePlaylistId = null;
         loadPlaylists();

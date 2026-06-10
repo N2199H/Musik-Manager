@@ -448,10 +448,21 @@ def create_playlist(pl: PlaylistCreate, db: Session = Depends(get_db)):
 
 @app.patch("/api/playlists/{playlist_id}")
 def update_playlist(playlist_id: int, payload: PlaylistUpdate, db: Session = Depends(get_db)):
-    """Playlist-Felder aktualisieren (aktuell nur name)."""
+    """Playlist-Felder aktualisieren (aktuell nur name).
+
+    Wird der Name geändert UND die Playlist hat eine M3U-Datei auf der
+    NAS (m3u_filepath gesetzt), wird die M3U-Datei ebenfalls umbenannt
+    (os.replace — atomar im selben Verzeichnis). So bleibt der Sync
+    zwischen DB und NAS-Datei auch nach einem Rename erhalten.
+
+    Playlists ohne m3u_filepath (manuell angelegt, nie exportiert) werden
+    nicht angerührt — sie haben schlicht keine Datei zum Umbenennen.
+    """
     pl = db.query(Playlist).filter(Playlist.id == playlist_id).first()
     if not pl:
         raise HTTPException(status_code=404, detail="Playlist nicht gefunden")
+
+    rename_result: dict | None = None
 
     if payload.name is not None:
         new_name = payload.name.strip()
@@ -462,12 +473,43 @@ def update_playlist(playlist_id: int, payload: PlaylistUpdate, db: Session = Dep
             clash = db.query(Playlist).filter(Playlist.name == new_name, Playlist.id != playlist_id).first()
             if clash:
                 raise HTTPException(status_code=409, detail=f"Name '{new_name}' wird bereits verwendet")
+            old_name = pl.name
             pl.name = new_name
+
+            # M3U auf NAS umbenennen, falls vorhanden
+            if pl.m3u_filepath:
+                old_m3u = pl.m3u_filepath
+                new_m3u = os.path.join(os.path.dirname(old_m3u), new_name + ".m3u")
+                ok, msg = _rename_m3u_file(old_m3u, new_m3u)
+                if ok:
+                    pl.m3u_filepath = new_m3u
+                    rename_result = {
+                        "renamed": True,
+                        "old_path": old_m3u,
+                        "new_path": new_m3u,
+                    }
+                    log.info("M3U renamed: %s → %s (playlist_id=%d)",
+                             old_m3u, new_m3u, playlist_id)
+                else:
+                    # Rename fehlgeschlagen — Namen in DB trotzdem updaten,
+                    # aber Response enthält Warning. User sieht den Fehler
+                    # und kann manuell aufräumen.
+                    log.warning("M3U-Rename fehlgeschlagen für playlist_id=%d: %s",
+                                playlist_id, msg)
+                    rename_result = {
+                        "renamed": False,
+                        "old_path": old_m3u,
+                        "new_path": new_m3u,
+                        "error": msg,
+                    }
 
     pl.updated_at = datetime.now().isoformat()
     db.commit()
     db.refresh(pl)
-    return pl.to_dict()
+    result = pl.to_dict()
+    if rename_result is not None:
+        result["m3u_rename"] = rename_result
+    return result
 
 
 @app.get("/api/playlists/{playlist_id}")
@@ -843,6 +885,28 @@ def _delete_m3u(m3u_filepath):
         os.remove(m3u_filepath)
         return True
     return False
+
+
+def _rename_m3u_file(old_filepath: str, new_filepath: str) -> tuple[bool, str]:
+    """Benennt eine M3U-Datei auf der NAS um (im gleichen Verzeichnis).
+
+    Verwendet os.replace() weil das atomar ist (auf POSIX) und keine
+    Cross-Device-Moves macht (im Gegensatz zu os.rename). Für M3Us
+    innerhalb desselben NAS-Mounts ist das der richtige Call.
+
+    Returns: (success, new_filepath_or_error_message)
+    """
+    if not old_filepath or not os.path.exists(old_filepath):
+        return False, f"Source nicht gefunden: {old_filepath}"
+    if old_filepath == new_filepath:
+        return True, old_filepath  # No-op, gleicher Name
+    if os.path.exists(new_filepath):
+        return False, f"Ziel existiert bereits: {new_filepath}"
+    try:
+        os.replace(old_filepath, new_filepath)
+        return True, new_filepath
+    except OSError as e:
+        return False, f"rename fehlgeschlagen: {e}"
 
 
 def _enqueue_cifs(speaker_ip, file_uri, title=""):
