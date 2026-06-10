@@ -439,6 +439,58 @@
         }
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+        /* Help Modal */
+        .help-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+        .help-tab {
+            padding: 8px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.88rem;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.15s;
+        }
+        .help-tab:hover { color: var(--text); }
+        .help-tab.active {
+            color: var(--accent-light);
+            border-bottom-color: var(--accent);
+        }
+        .help-content {
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+        .help-panel h4 {
+            color: var(--accent-light);
+            margin-bottom: 12px;
+            font-size: 1.05rem;
+        }
+        .help-panel h5 {
+            color: var(--text);
+            margin: 16px 0 6px 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .help-panel p { margin-bottom: 10px; color: var(--text); }
+        .help-panel ul, .help-panel ol { margin: 6px 0 12px 20px; }
+        .help-panel li { margin-bottom: 4px; color: var(--text); }
+        .help-panel code {
+            background: var(--bg-dark);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            color: var(--accent-light);
+        }
+        .help-panel b { color: var(--accent-light); font-weight: 600; }
+
+
         /* Toast */
         .toast {
             position: fixed;
@@ -797,6 +849,9 @@
             <button class="nav-tab" onclick="showTab('playlists', this)">📋 Playlists</button>
             <button class="nav-tab" onclick="showTab('sonos', this)">🔊 Sonos</button>
         </div>
+        <button class="icon-btn" onclick="showHelp()" title="Hilfe & Bedienungsanleitung">
+            <span>❓</span>
+        </button>
         <button class="icon-btn" id="btn-settings" onclick="openSettings()" title="Bibliothek & Enrichment">
             <span id="settings-icon">⚙️</span>
             <span class="job-dot hidden" id="settings-job-dot"></span>
@@ -952,6 +1007,218 @@
         <div style="color:var(--text-dim);">Hinweis: Diese Funktion ist veraltet. Bitte das „+"-Symbol direkt am Suchergebnis verwenden.</div>
         <div class="modal-actions" style="margin-top:16px;">
             <button class="btn btn-secondary" onclick="hideModal()">Schließen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Help Modal (Bedienungsanleitung) -->
+<div class="modal-overlay hidden" id="modal-help">
+    <div class="modal modal-wide" style="max-height:85vh;">
+        <h3>❓ Hilfe & Bedienungsanleitung</h3>
+
+        <!-- Tab-Buttons -->
+        <div class="help-tabs">
+            <button class="help-tab active" data-help-tab="browse" onclick="switchHelpTab('browse', this)">🔍 Suchen</button>
+            <button class="help-tab" data-help-tab="playlists" onclick="switchHelpTab('playlists', this)">📋 Playlists</button>
+            <button class="help-tab" data-help-tab="sonos" onclick="switchHelpTab('sonos', this)">🔊 Sonos</button>
+            <button class="help-tab" data-help-tab="score" onclick="switchHelpTab('score', this)">⭐ Score-System</button>
+            <button class="help-tab" data-help-tab="settings" onclick="switchHelpTab('settings', this)">⚙️ Settings</button>
+            <button class="help-tab" data-help-tab="trouble" onclick="switchHelpTab('trouble', this)">🛠 Problem?</button>
+        </div>
+
+        <div class="help-content">
+
+            <!-- Tab: Suchen -->
+            <div class="help-panel" data-help-panel="browse">
+                <h4>🔍 Songs finden & abspielen</h4>
+                <p>Im <b>Suchen</b>-Tab suchst du nach Musik und spielst sie auf Sonos-Boxen ab.</p>
+
+                <h5>Was du hier machen kannst</h5>
+                <ul>
+                    <li><b>Suchfeld:</b> Tippe Künstler, Titel oder Album. Sucht live während du tippst.</li>
+                    <li><b>Genre-Filter:</b> Nur Soul, Rock, Klassik? Filter links.</li>
+                    <li><b>Sortierung:</b> Künstler A-Z, ⭐ Score (deine Lieblings oben), Zufall 🔀</li>
+                    <li><b>Jahr-Filter:</b> 1970er, 2000er, …</li>
+                    <li><b>💾 Als Playlist:</b> Speichert deine aktuelle Suche als wiederverwendbare Playlist.</li>
+                </ul>
+
+                <h5>Song-Aktionen</h5>
+                <ul>
+                    <li><b>▶ Play:</b> Spielt den Song auf den ausgewählten Speakern (nächster Schritt: Speaker wählen).</li>
+                    <li><b>👍 Like:</b> Sagt "gefällt mir". Score steigt.</li>
+                    <li><b>👎 Dislike:</b> Sagt "mag ich nicht". Score sinkt — der Song wird bei Auto-Play seltener gewählt.</li>
+                    <li><b>🗑 Aus Playlist entfernen:</b> Nur in Playlists sichtbar.</li>
+                </ul>
+
+                <h5>Tipps</h5>
+                <ul>
+                    <li>Wenn du die Seite öffnest und nichts siehst: klick <b>🔍 Suchen</b> (lädt alle Songs).</li>
+                    <li>Der Score-Sortierung zeigt dir deine "geheimen Lieblings" — sortiere nach ⭐, scroll dich durch.</li>
+                </ul>
+            </div>
+
+            <!-- Tab: Playlists -->
+            <div class="help-panel hidden" data-help-panel="playlists">
+                <h4>📋 Playlists</h4>
+                <p>Sammlungen von Songs in einer Reihenfolge. Werden als <code>.m3u</code>-Dateien auf dem NAS synchronisiert — d.h. sie sind auch von anderen Playern lesbar.</p>
+
+                <h5>Playlist erstellen</h5>
+                <ol>
+                    <li>Im Suchen-Tab: Songs suchen oder filtern</li>
+                    <li>Auf <b>💾 Als Playlist</b> klicken</li>
+                    <li>Name vergeben → fertig. Die Playlist übernimmt alle sichtbaren Songs in der aktuellen Reihenfolge.</li>
+                </ol>
+
+                <h5>Was die Spalten bedeuten</h5>
+                <ul>
+                    <li><b>Tracks:</b> Anzahl Songs in der Playlist</li>
+                    <li><b>📊 Stats:</b> Durchschnittlicher Score (zeigt Qualität der Playlist)</li>
+                    <li><b>🗑:</b> Playlist löschen</li>
+                </ul>
+
+                <h5>Tracks bearbeiten</h5>
+                <ul>
+                    <li><b>Reihenfolge ändern:</b> ↑ ↓ Buttons links neben dem Song</li>
+                    <li><b>Track entfernen:</b> 🗑 rechts</li>
+                    <li><b>👍 Like / 👎 Dislike:</b> Inline, wirkt sofort auf den Song-Score</li>
+                    <li>Änderungen werden live gespeichert (kein "Speichern"-Button nötig)</li>
+                </ul>
+
+                <h5>Verhalten</h5>
+                <ul>
+                    <li>Wenn ein Song auf der NAS verschwindet (gelöscht, umbenannt), wird er beim nächsten Öffnen der Playlist übersprungen — kein Crash.</li>
+                    <li>Playlists mit extern bewerteten Songs: Score stimmt nach einem <b>📥 ID3 → DB sync</b> in den Settings.</li>
+                </ul>
+            </div>
+
+            <!-- Tab: Sonos -->
+            <div class="help-panel hidden" data-help-panel="sonos">
+                <h4>🔊 Sonos-Lautsprecher</h4>
+                <p>Im <b>Sonos</b>-Tab siehst du alle Lautsprecher im Netzwerk und kannst sie gruppieren, steuern und was abspielen.</p>
+
+                <h5>Speaker-Status</h5>
+                <ul>
+                    <li>🟢 = online &amp; spielt gerade</li>
+                    <li>⚪ = online, spielt nichts</li>
+                    <li>🔴 = offline (kein Strom, Netzwerkproblem)</li>
+                </ul>
+
+                <h5>Was passiert beim Abspielen</h5>
+                <ol>
+                    <li>Du klickst auf ▶ bei einem Song oder einer Playlist</li>
+                    <li>Speaker-Auswahl-Modal: einen Speaker, mehrere (Party) oder alle</li>
+                    <li><b>Wichtig:</b> Bei Auswahl von <i>einem</i> Speaker wird er aus bestehenden Gruppen rausgelöst (Solo-Modus), damit dein Song nicht plötzlich auf mehreren Boxen läuft. Bei <i>mehreren</i> Speakern werden sie explizit gruppiert.</li>
+                    <li>Die App legt die MP3-URL auf den Sonos-Queue, Auto-Advance übernimmt den nächsten Track.</li>
+                </ol>
+
+                <h5>Now-Playing-Bar</h5>
+                <ul>
+                    <li>Unten am Bildschirm. Zeigt was gerade läuft + Position.</li>
+                    <li><b>⏸ / ▶</b> Pause/Resume</li>
+                    <li><b>⏭</b> Skip (zählt als "skipped"-Event für den Score)</li>
+                    <li><b>👍/👎</b> Like/Dislike</li>
+                    <li>Die Bar aktualisiert sich automatisch alle 5 Sek.</li>
+                </ul>
+
+                <h5>Häufige Stolperfallen</h5>
+                <ul>
+                    <li><b>"Speaker offline" obwohl Musik spielt:</b> Cache. Klick <b>🔄 Speakers neu suchen</b>.</li>
+                    <li><b>Song spielt nicht ab:</b> Prüf in den Settings (⚙️) den Job-Status — läuft ein Scan, kann das Sonos blockieren.</li>
+                    <li><b>Auto-Advance stoppt nach 1 Song:</b> Klassisches SoCo-Problem. Wird automatisch 1× retried; falls dauerhaft, Service neustarten.</li>
+                </ul>
+            </div>
+
+            <!-- Tab: Score -->
+            <div class="help-panel hidden" data-help-panel="score">
+                <h4>⭐ Score-System (0–100)</h4>
+                <p>Jeder Song hat einen <b>Score</b> zwischen 0 (hasse ich) und 100 (Lieblingssong). Startwert ist <b>50.0</b> ("noch nicht bewertet"). Der Score beeinflusst, welche Songs beim Zufalls-Modus und Auto-Play bevorzugt werden.</p>
+
+                <h5>Wie entsteht der Score?</h5>
+                <p>Der Score wird mit einer <b>EWMA-Formel</b> (Exponentially Weighted Moving Average) langsam Richtung Zielwert bewegt. Träge — ein Like bewegt den Score von 50 → 65, nicht direkt auf 80. Das verhindert, dass ein einmaliges Antippen den Song dauerhaft auf "Lieblingslied" setzt.</p>
+
+                <h5>Was passiert bei …</h5>
+                <ul>
+                    <li><b>Song komplett gehört (≥90%):</b> Score bewegt sich Richtung <b>75</b> (gut)</li>
+                    <li><b>Mehr als die Hälfte gehört:</b> Score Richtung <b>65</b> (war OK)</li>
+                    <li><b>Weniger als Hälfte gehört:</b> Score Richtung <b>35</b> (war nix)</li>
+                    <li><b>Weniger als 10%:</b> Kein Update (war Test/Falsches Lied)</li>
+                    <li><b>👍 Like:</b> Score Richtung <b>80</b></li>
+                    <li><b>👎 Dislike:</b> Score Richtung <b>25</b></li>
+                </ul>
+
+                <h5>Score und MP3-Datei</h5>
+                <p>Der Score wird in <b>drei</b> Stellen gespeichert:</p>
+                <ol>
+                    <li><b>DB (songs.score):</b> Source of Truth, was die App anzeigt</li>
+                    <li><b>MP3-Tag TXXX:MUSIK_MANAGER_SCORE:</b> Wird automatisch bei jeder Score-Änderung in die MP3 geschrieben</li>
+                    <li><b>MP3-Tag POPM (Popularimeter):</b> Standardisiertes Rating (0–255), das andere Player (Winamp, WMP, Auto) anzeigen. Wird auf 0–100 skaliert.</li>
+                </ol>
+
+                <h5>ID3-Sync-Buttons in den Settings</h5>
+                <ul>
+                    <li><b>🏷️ ID3-Tags syncen:</b> Schreibt <i>DB → MP3</i>. Bulk-Backfill für ~10k MP3s (15-20 min).</li>
+                    <li><b>📥 ID3 → DB syncen:</b> Liest <i>MP3 → DB</i>. Nützlich wenn du extern in Mp3tag/Winamp/WMP bewertet hast und die Werte in der App sehen willst.</li>
+                </ul>
+
+                <h5>Hinweis: Externe vs interne Bewertungen</h5>
+                <p>Wenn du einen Song extern auf 58.3 bewertest, aber danach 3× in der App completed-playst, wird der Score durch die EWMA-Logik Richtung 75 gezogen — die externe Bewertung wird quasi überschrieben. Beide Systeme konkurrieren; die App-Skala gewinnt.</p>
+            </div>
+
+            <!-- Tab: Settings -->
+            <div class="help-panel hidden" data-help-panel="settings">
+                <h4>⚙️ Settings (Bibliothek & Enrichment)</h4>
+                <p>Alle Hintergrund-Jobs und Datenbank-Aktionen. Jeder Job läuft <b>async im Hintergrund</b> — du kannst die UI weiter benutzen, Fortschritt ist oben am Settings-Icon sichtbar (kleiner Punkt).</p>
+
+                <h5>Was es hier gibt</h5>
+                <ul>
+                    <li><b>📁 Bibliothek scannen:</b> Liest alle Audio-Dateien im NAS, schreibt ID3-Tags in die DB. ~10k Songs dauern ~10-15 min via SMB.</li>
+                    <li><b>🏷️ ID3-Tags syncen:</b> Schreibt <i>DB → MP3</i>. Voraussetzung dafür, dass umbenannte/verschobene MP3s beim nächsten Scan wiedererkannt werden.</li>
+                    <li><b>📥 ID3 → DB syncen:</b> Liest <i>MP3 → DB</i>. Holt extern vergebene Bewertungen in die App.</li>
+                    <li><b>🎵 Metadaten von MusicBrainz:</b> Genre + Album + Jahr pro Song nachschlagen. Dauert lang (MusicBrainz rate-limited: 1 req/s).</li>
+                </ul>
+
+                <h5>Verhalten</h5>
+                <ul>
+                    <li>Während ein Job läuft: ⚙️-Button zeigt einen kleinen <b>Punkt</b>.</li>
+                    <li>Job kann jederzeit mit <b>⏹ Stop</b> abgebrochen werden — DB bleibt konsistent.</li>
+                    <li>Mehrere Jobs gleichzeitig: Nein — nur einer läuft, weitere geben 409 "Job läuft bereits".</li>
+                    <li><b>Niemals force_rescan auf Sub-Ordner</b> — kann alle DB-Songs außerhalb des Pfads löschen (siehe Troubleshooting).</li>
+                </ul>
+            </div>
+
+            <!-- Tab: Troubleshooting -->
+            <div class="help-panel hidden" data-help-panel="trouble">
+                <h4>🛠 Häufige Probleme</h4>
+
+                <h5>Alle Playlists sind leer</h5>
+                <p>Playlist-Inhalt (Tabelle <code>playlist_tracks</code>) wurde versehentlich gelöscht. Lösung: siehe <code>scripts/restore_playlist_tracks.py</code> im Repo, oder Backup <code>/tmp/musik.db.before-playlist-restore-*</code> verwenden.</p>
+
+                <h5>"Speaker offline" obwohl er spielt</h5>
+                <p>Sonos-Cache. Sonos-Tab → <b>🔄 Speakers neu suchen</b>.</p>
+
+                <h5>Score zeigt 50 für alle Songs, auch bewertete</h5>
+                <p>Bewertungen sind in der MP3 (TXXX_SCORE), aber nicht in der DB. Lösung: Settings → <b>📥 ID3 → DB syncen</b>.</p>
+
+                <h5>Score in DB ändert sich, aber MP3 nicht</h5>
+                <p>Seltener Fehler: ID3-Sync beim Rating-Endpoint fehlgeschlagen. Steht im Service-Log <code>/tmp/musik-server.log</code>. Lösung: Settings → <b>🏷️ ID3-Tags syncen</b> mit "Alle Dateien" Mode.</p>
+
+                <h5>Scan hat 10.000 Songs gelöscht / Playlist-Tracks leer</h5>
+                <p>Sub-Ordner-Scan mit <code>force_rescan=True</code> Reconciliation-Bug. Seit Version 7739605 durch ein Safety-Gate abgesichert — passiert nicht mehr. Bei Bedarf: <code>/tmp/musik.db.before-scan-test</code> enthält den letzten sauberen Stand.</p>
+
+                <h5>Job hängt / läuft nicht weiter</h5>
+                <p>Service neustarten: <code>kill &lt;uvicorn-pid&gt; &amp;&amp; venv/bin/python3 venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8900 &amp;</code></p>
+
+                <h5>Server-Log einsehen</h5>
+                <p><code>tail -f /tmp/musik-server.log</code> — steht fast alles drin (Scan-Fortschritt, Errors, Warnings).</p>
+
+                <h5>DB-Backups</h5>
+                <p>Vor jeder destruktiven Aktion: manuelles Backup empfohlen. <code>cp musik.db /tmp/musik.db.manual-$(date +%Y%m%d-%H%M%S)</code></p>
+            </div>
+
+        </div>
+
+        <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn btn-secondary" onclick="hideHelp()">Schließen</button>
         </div>
     </div>
 </div>
@@ -2397,6 +2664,24 @@ function showCreatePlaylistModal() {
     document.getElementById('modal-create-pl').classList.remove('hidden');
     document.getElementById('new-pl-name').focus();
 }
+
+function showHelp() {
+    document.getElementById('modal-help').classList.remove('hidden');
+    // Reset auf ersten Tab
+    switchHelpTab('browse', document.querySelector('[data-help-tab="browse"]'));
+}
+function hideHelp() {
+    document.getElementById('modal-help').classList.add('hidden');
+}
+function switchHelpTab(tabName, btnEl) {
+    // Tabs umschalten
+    document.querySelectorAll('.help-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.help-panel').forEach(p => p.classList.add('hidden'));
+    if (btnEl) btnEl.classList.add('active');
+    const panel = document.querySelector(`[data-help-panel="${tabName}"]`);
+    if (panel) panel.classList.remove('hidden');
+}
+
 function hideModal() {
     document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
 }
